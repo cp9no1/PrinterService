@@ -72,6 +72,8 @@
 | 文档 | `.doc`, `.docx`, `.pdf` | 自动转换为PDF |
 | 表格 | `.xls`, `.xlsx` | 自动转换为PDF |
 | 演示 | `.ppt`, `.pptx` | 自动转换为PDF |
+| 文本 | `.txt`, `.md` , `.log` | 自动转换为PDF |
+| 图像 | `.jpg`, `.png` , `.gif` | 自动转换为PDF |
 
 ## 🔄 更新日志
 
