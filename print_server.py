@@ -220,37 +220,97 @@ def convert_text_to_pdf(text_path, output_path, page_size=A4):
         c = canvas.Canvas(output_path, pagesize=page_size)
         page_width, page_height = page_size
         
-        c.setFont("Helvetica", 10)
+        font_registered = False
+        try:
+            from reportlab.pdfbase import pdfmetrics
+            from reportlab.pdfbase.ttfonts import TTFont
+            
+            chinese_fonts = [
+                ("SimSun", r"C:\Windows\Fonts\simsun.ttc"),
+                ("SimHei", r"C:\Windows\Fonts\simhei.ttf"), 
+                ("Microsoft-YaHei", r"C:\Windows\Fonts\msyh.ttc"),
+                ("NSimSun", r"C:\Windows\Fonts\simsun.ttc")
+            ]
+            
+            for font_name, font_path in chinese_fonts:
+                try:
+                    if os.path.exists(font_path):
+                        pdfmetrics.registerFont(TTFont(font_name, font_path))
+                        c.setFont(font_name, 10)
+                        font_registered = True
+                        break
+                except Exception:
+                    continue
+        except ImportError:
+            pass
+        
+        # 如果没有注册成功中文字体，使用Courier字体（等宽字体，对中文兼容性更好）
+        if not font_registered:
+            try:
+                c.setFont("Courier", 9)
+            except Exception:
+                c.setFont("Helvetica", 10)
         
         lines = content.split('\n')
         y = page_height - 50
-        line_height = 12
+        line_height = 14 if font_registered else 12
+        max_chars_per_line = 80 if not font_registered else 60
         
         for line in lines:
             if y < 50:
                 c.showPage()
-                c.setFont("Helvetica", 10)
+                if font_registered:
+                    for font_name, font_path in chinese_fonts:
+                        try:
+                            if os.path.exists(font_path):
+                                c.setFont(font_name, 10)
+                                break
+                        except:
+                            continue
+                else:
+                    try:
+                        c.setFont("Courier", 9)
+                    except:
+                        c.setFont("Helvetica", 10)
                 y = page_height - 50
             
-            if len(line) > 80:
-                words = line.split(' ')
-                current_line = ""
-                for word in words:
-                    if len(current_line + word) < 80:
-                        current_line += word + " "
-                    else:
-                        c.drawString(50, y, current_line.strip())
-                        y -= line_height
-                        current_line = word + " "
-                        if y < 50:
-                            c.showPage()
-                            c.setFont("Helvetica", 10)
-                            y = page_height - 50
-                if current_line:
-                    c.drawString(50, y, current_line.strip())
+            if len(line) > max_chars_per_line:
+                while len(line) > max_chars_per_line:
+                    split_line = line[:max_chars_per_line]
+                    try:
+                        c.drawString(50, y, split_line)
+                    except Exception:
+                        c.drawString(50, y, "[无法显示的字符]")
+                    y -= line_height
+                    line = line[max_chars_per_line:]
+                    if y < 50:
+                        c.showPage()
+                        if font_registered:
+                            for font_name, font_path in chinese_fonts:
+                                try:
+                                    if os.path.exists(font_path):
+                                        c.setFont(font_name, 10)
+                                        break
+                                except:
+                                    continue
+                        else:
+                            try:
+                                c.setFont("Courier", 9)
+                            except:
+                                c.setFont("Helvetica", 10)
+                        y = page_height - 50
+                
+                if line:
+                    try:
+                        c.drawString(50, y, line)
+                    except Exception:
+                        c.drawString(50, y, "[无法显示的字符]")
                     y -= line_height
             else:
-                c.drawString(50, y, line)
+                try:
+                    c.drawString(50, y, line)
+                except Exception:
+                    c.drawString(50, y, "[无法显示的字符]")
                 y -= line_height
         
         c.save()
@@ -258,7 +318,7 @@ def convert_text_to_pdf(text_path, output_path, page_size=A4):
     except Exception as e:
         print(f"文本转PDF失败: {e}")
         return False
-
+        
 def convert_office_to_pdf_com_silent(office_path, output_path):
     try:
         pythoncom.CoInitialize()
@@ -266,6 +326,13 @@ def convert_office_to_pdf_com_silent(office_path, output_path):
         ext = office_path.lower().split('.')[-1]
         abs_office_path = os.path.abspath(office_path)
         abs_output_path = os.path.abspath(output_path)
+        
+        output_dir = os.path.dirname(abs_output_path)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        
+        if not os.path.exists(abs_office_path):
+            raise Exception(f"输入文件不存在: {abs_office_path}")
         
         if ext in ['doc', 'docx']:
             word = comtypes.client.CreateObject('Word.Application')
@@ -275,8 +342,24 @@ def convert_office_to_pdf_com_silent(office_path, output_path):
             
             try:
                 doc = word.Documents.Open(abs_office_path, ReadOnly=True, Visible=False)
-                doc.SaveAs2(abs_output_path, FileFormat=17)
+                
+                success = False
+                try:
+                    doc.ExportAsFixedFormat(abs_output_path, 17)
+                    success = True
+                except Exception:
+                    try:
+                        doc.SaveAs2(abs_output_path, FileFormat=17)
+                        success = True
+                    except Exception:
+                        try:
+                            doc.SaveAs(abs_output_path, 17)
+                            success = True
+                        except Exception:
+                            pass
+                
                 doc.Close(SaveChanges=False)
+                    
             finally:
                 word.Quit()
                 
@@ -289,46 +372,118 @@ def convert_office_to_pdf_com_silent(office_path, output_path):
             
             try:
                 wb = excel.Workbooks.Open(abs_office_path, ReadOnly=True)
-                wb.SaveAs(abs_output_path, FileFormat=57)
+                
+                success = False
+                try:
+                    wb.ExportAsFixedFormat(0, abs_output_path)
+                    success = True
+                except Exception:
+                    try:
+                        ws = wb.ActiveSheet
+                        ws.ExportAsFixedFormat(0, abs_output_path)
+                        success = True
+                    except Exception:
+                        try:
+                            wb.SaveAs(abs_output_path, 57)
+                            success = True
+                        except Exception:
+                            pass
+                
                 wb.Close(SaveChanges=False)
+                    
             finally:
                 excel.Quit()
                 
         elif ext in ['ppt', 'pptx']:
-            ppt = comtypes.client.CreateObject('PowerPoint.Application')
-            ppt.Visible = 0
-            
             try:
-                presentation = ppt.Presentations.Open(abs_office_path, ReadOnly=True, Untitled=True, WithWindow=False)
-                presentation.SaveAs(abs_output_path, 32)
-                presentation.Close()
+                ppt = comtypes.client.CreateObject('PowerPoint.Application')
+                
+                try:
+                    ppt.Visible = 0
+                except Exception:
+                    pass
+                
+                try:
+                    presentation = ppt.Presentations.Open(abs_office_path)
+                    
+                    success = False
+                    try:
+                        presentation.ExportAsFixedFormat(abs_output_path, 2)
+                        success = True
+                    except Exception:
+                        try:
+                            presentation.SaveAs(abs_output_path, 32)
+                            success = True
+                        except Exception:
+                            try:
+                                presentation.Export(abs_output_path, "PDF")
+                                success = True
+                            except Exception:
+                                try:
+                                    presentation.SaveAs(abs_output_path)
+                                    success = True
+                                except Exception:
+                                    pass
+                    
+                    try:
+                        presentation.Close()
+                    except Exception:
+                        pass
+                        
+                except Exception as file_error:
+                    print(f"PowerPoint文件处理失败: {file_error}")
+                    return False
+                    
+            except Exception as ppt_error:
+                print(f"PowerPoint COM对象创建失败: {ppt_error}")
+                return False
             finally:
-                ppt.Quit()
+                try:
+                    if 'ppt' in locals():
+                        ppt.Quit()
+                except Exception:
+                    pass
                 
         else:
             return False
             
-        pythoncom.CoUninitialize()
-        return True
-        
+        if os.path.exists(abs_output_path) and os.path.getsize(abs_output_path) > 0:
+            return True
+        else:
+            return False
+            
     except Exception as e:
         print(f"COM组件转换失败: {e}")
+        return False
+    finally:
         try:
             pythoncom.CoUninitialize()
         except:
             pass
-        return False
+
+def sanitize_filename(filename):
+    import re
+    filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
+    filename = filename.strip('. ')
+    return filename
 
 def convert_to_pdf(file_path, output_dir):
     filename = os.path.basename(file_path)
     name, ext = os.path.splitext(filename)
     ext = ext.lower()
     
-    pdf_filename = f"{name}.pdf"
+    clean_name = sanitize_filename(name)
+    pdf_filename = f"{clean_name}.pdf"
     pdf_path = os.path.join(output_dir, pdf_filename)
     
     if ext == '.pdf':
-        return file_path
+        import shutil
+        try:
+            shutil.copy2(file_path, pdf_path)
+            return pdf_path
+        except Exception as e:
+            print(f"复制PDF文件失败: {e}")
+            return file_path
     
     if ext in ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff']:
         if convert_image_to_pdf(file_path, pdf_path):
@@ -339,11 +494,16 @@ def convert_to_pdf(file_path, output_dir):
             return pdf_path
     
     elif ext in ['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx']:
-        if OFFICE_AVAILABLE and convert_office_to_pdf_com_silent(file_path, pdf_path):
-            return pdf_path
+        if OFFICE_AVAILABLE:
+            if convert_office_to_pdf_com_silent(file_path, pdf_path):
+                return pdf_path
+            else:
+                print(f"Office文件转换失败: {filename}")
+        else:
+            print("Office COM组件不可用")
     
     return None
-
+    
 def get_resource_path(relative_path):
     try:
         base_path = sys._MEIPASS
