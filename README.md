@@ -4,7 +4,7 @@
 
 <img width="834" height="784" alt="image" src="https://github.com/user-attachments/assets/d3702780-8377-4ded-8138-211254614f60" />
 
-
+原项目地址：https://github.com/a937750307/lan-printing
 
 ## ✨ 功能特点
 
