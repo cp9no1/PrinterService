@@ -1,0 +1,575 @@
+<!doctype html>
+<html lang="zh-cn">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>内网打印服务</title>
+    <link href="/static/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { 
+            background: #f8f9fa; 
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .main-container { 
+            height: 100vh;
+            display: flex;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .left-panel {
+            width: 45%;
+            background: #fff;
+            border-right: 2px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+        .left-content {
+            padding: 20px;
+            flex: 1;
+        }
+        
+        .right-panel {
+            width: 55%;
+            display: flex;
+            flex-direction: column;
+            background: #fafafa;
+        }
+        
+        h1 { 
+            font-size: 1.8rem; 
+            margin-bottom: 1rem; 
+            color: #333;
+        }
+        .form-label { font-weight: 500; }
+        .log-list { 
+            max-height: 200px; 
+            overflow-y: auto; 
+            font-size: 0.9em; 
+            margin-bottom: 0;
+        }
+        .supported-formats { 
+            font-size: 0.9em; 
+            color: #6c757d; 
+            margin-top: 0.5rem; 
+        }
+        .conversion-info { 
+            background: #e8f5e8; 
+            padding: 12px; 
+            border-radius: 8px; 
+            margin-bottom: 15px; 
+            font-size: 0.85em; 
+        }
+        .status-good { color: #28a745; font-weight: bold; }
+        .status-missing { color: #dc3545; }
+        .silent-print-info { 
+            background: #e3f2fd; 
+            padding: 12px; 
+            border-radius: 8px; 
+            margin-bottom: 15px; 
+            font-size: 0.9em;
+        }
+        
+        .drop-zone {
+            flex: 1;
+            border: 3px dashed #007bff;
+            border-radius: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            background: #f8f9ff;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            margin: 0;
+            min-height: 40%;
+            position: relative;
+        }
+        .drop-zone:hover {
+            border-color: #0056b3;
+            background: #e6f3ff;
+        }
+        .drop-zone.dragover {
+            border-color: #0056b3;
+            background: #cce7ff;
+            color: #0056b3;
+        }
+        .drop-zone i {
+            font-size: 4rem;
+            color: #007bff;
+            margin-bottom: 15px;
+        }
+        .drop-zone h3 {
+            color: #007bff;
+            margin-bottom: 10px;
+        }
+        
+        .file-list-container {
+            flex: 1;
+            background: #fff;
+            border-top: 2px solid #e0e0e0;
+            overflow-y: auto;
+            max-height: 60%;
+        }
+        .file-list-header {
+            background: #f8f9fa;
+            padding: 15px 20px;
+            border-bottom: 1px solid #e0e0e0;
+            font-weight: 600;
+            color: #495057;
+        }
+        .file-list-content {
+            padding: 10px;
+        }
+        
+        .file-item {
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .file-info {
+            flex-grow: 1;
+        }
+        .file-name {
+            font-weight: 500;
+            margin-bottom: 5px;
+        }
+        .file-status {
+            font-size: 0.9em;
+            color: #6c757d;
+        }
+        .file-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .file-actions .btn {
+            font-size: 0.8rem;
+            padding: 0.25rem 0.5rem;
+        }
+        
+        .upload-progress {
+            width: 100%;
+            height: 4px;
+            background: #f0f0f0;
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+        .upload-progress-bar {
+            height: 100%;
+            background: #007bff;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        
+        .print-settings {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .print-settings h4 {
+            margin-bottom: 15px;
+            color: #495057;
+            font-size: 1.1rem;
+        }
+        
+        @media (max-width: 768px) {
+            .main-container {
+                flex-direction: column;
+                height: auto;
+                overflow: visible;
+            }
+            .left-panel, .right-panel {
+                width: 100%;
+            }
+            .right-panel {
+                min-height: 60vh;
+            }
+            body {
+                height: auto;
+                overflow: visible;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="main-container">
+    <div class="left-panel">
+        <div class="left-content">
+            <h1 class="text-center">内网打印服务</h1>
+            
+            <div class="silent-print-info">
+                <strong>🔧 静默打印功能:</strong> 使用Windows底层打印API，完全避免弹出任何程序界面
+            </div>
+            
+            <div class="conversion-info">
+				<strong>转换能力状态:</strong><br>
+				<span class="{% if pymupdf_available %}status-good{% else %}status-missing{% endif %}">
+					PDF处理(PyMuPDF): {{ '✓ 可用' if pymupdf_available else '✗ 未安装 - 静默打印功能不可用' }}
+				</span><br>
+				<span class="{% if office_available %}status-good{% else %}status-missing{% endif %}">
+					Office COM组件: {{ '✓ 可用' if office_available else '✗ 未安装Office' }}
+				</span>
+				<br><small>所有转换都是完全静默的，不会弹出任何界面</small>
+			</div>
+            
+            <div class="print-settings">
+                <h4>打印设置</h4>
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label">选择打印机</label>
+                        <select id="printerSelect" class="form-select">
+                            {% for p in printers %}
+                                <option value="{{p}}">{{p}}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">打印份数</label>
+                        <input type="number" id="copiesInput" value="1" min="1" max="10" class="form-control">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">纸张大小</label>
+                        <input type="text" id="paperSizeInput" value="A4" class="form-control">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">单双面</label>
+                        <select id="duplexSelect" class="form-select">
+                            <option value="1">单面</option>
+                            <option value="2">长边翻转双面</option>
+                            <option value="3">短边翻转双面</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <button id="printAllBtn" class="btn btn-success w-100">静默打印全部PDF文件</button>
+                    </div>
+                </div>
+            </div>
+
+            <h4>打印日志</h4>
+            <ul class="list-group log-list" id="logList">
+                {% for l in logs %}
+                    <li class="list-group-item">{{l}}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+
+    <div class="right-panel">
+        <div class="drop-zone" id="dropZone">
+            <input type="file" id="fileInput" multiple style="display: none;">
+            <i>📄</i>
+            <h3>拖拽文件到这里上传</h3>
+            <p style="margin-bottom: 10px;">或者点击选择文件</p>
+            <div class="supported-formats">
+                支持格式：PDF、图片(JPG/PNG/BMP/GIF/TIFF)、文本(TXT/MD/LOG)、Office文档(DOC/DOCX/XLS/XLSX/PPT/PPTX)
+            </div>
+        </div>
+        
+        <div class="file-list-container">
+            <div class="file-list-header">
+                文件列表
+            </div>
+            <div class="file-list-content" id="fileList">
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="/static/bootstrap.bundle.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const fileList = document.getElementById('fileList');
+    const printAllBtn = document.getElementById('printAllBtn');
+    const logList = document.getElementById('logList');
+    
+    dropZone.addEventListener('click', () => fileInput.click());
+    
+    fileInput.addEventListener('change', handleFiles);
+    
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+    });
+    
+    dropZone.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+    });
+    
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        const files = e.dataTransfer.files;
+        handleFiles({target: {files: files}});
+    });
+    
+    function handleFiles(event) {
+        const files = Array.from(event.target.files);
+        files.forEach(uploadFile);
+    }
+    
+    function uploadFile(file) {
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const fileItem = createFileItem(file.name, '上传中...', 'warning');
+        fileList.appendChild(fileItem);
+        
+        fetch('/upload', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            updateFileItem(fileItem, data);
+            refreshFileList();
+        })
+        .catch(error => {
+            console.error('上传失败:', error);
+            updateFileItemStatus(fileItem, '上传失败', 'danger');
+        });
+    }
+    
+    function createFileItem(filename, status, statusColor) {
+        const div = document.createElement('div');
+        div.className = 'file-item';
+        div.innerHTML = `
+            <div class="file-info">
+                <div class="file-name">${filename}</div>
+                <div class="file-status">
+                    <span class="badge bg-${statusColor}">${status}</span>
+                </div>
+                <div class="upload-progress" style="display: none;">
+                    <div class="upload-progress-bar"></div>
+                </div>
+            </div>
+            <div class="file-actions">
+            </div>
+        `;
+        return div;
+    }
+    
+    function updateFileItem(fileItem, data) {
+        const statusElement = fileItem.querySelector('.file-status .badge');
+        const actionsElement = fileItem.querySelector('.file-actions');
+        
+        if (data.success) {
+            statusElement.textContent = data.converted ? '已转换为PDF' : '已上传';
+            statusElement.className = `badge bg-${data.converted ? 'success' : 'secondary'}`;
+            
+            let buttonsHtml = '';
+            if (data.converted && data.pdf_name) {
+                buttonsHtml += `<button class="btn btn-primary btn-sm" onclick="printFile('${data.filename}')">🔇 静默打印</button>`;
+                buttonsHtml += `<a href="/preview/${data.pdf_name}" target="_blank" class="btn btn-outline-secondary btn-sm">预览PDF</a>`;
+            } else {
+                buttonsHtml += `<span class="text-muted small">无法静默打印，请先转换为PDF</span>`;
+            }
+            buttonsHtml += `<a href="/preview/${data.filename}" target="_blank" class="btn btn-outline-info btn-sm">预览原文件</a>`;
+			buttonsHtml += `<button class="btn btn-danger btn-sm" onclick="showDeleteModal('${data.filename}')">🗑️ 删除</button>`;
+            actionsElement.innerHTML = buttonsHtml;
+        } else {
+            statusElement.textContent = data.message || '处理失败';
+            statusElement.className = 'badge bg-danger';
+        }
+    }
+    
+    function updateFileItemStatus(fileItem, status, statusColor) {
+        const statusElement = fileItem.querySelector('.file-status .badge');
+        statusElement.textContent = status;
+        statusElement.className = `badge bg-${statusColor}`;
+    }
+    
+    function refreshFileList() {
+        fetch('/api/files')
+        .then(response => response.json())
+        .then(files => {
+            fileList.innerHTML = '';
+            files.forEach(file => {
+                const fileItem = createFileItem(file.name, file.status, file.status_color);
+                updateFileItem(fileItem, {
+                    success: true,
+                    filename: file.name,
+                    converted: file.pdf_path ? true : false,
+                    pdf_name: file.pdf_name
+                });
+                fileList.appendChild(fileItem);
+            });
+        });
+    }
+    
+    window.printFile = function(filename) {
+        const printer = document.getElementById('printerSelect').value;
+        const copies = document.getElementById('copiesInput').value;
+        const duplex = document.getElementById('duplexSelect').value;
+        const paperSize = document.getElementById('paperSizeInput').value;
+        
+        fetch('/print_single', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                filename: filename,
+                printer: printer,
+                copies: parseInt(copies),
+                duplex: parseInt(duplex),
+                paper_size: paperSize,
+                quality: 'normal'
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                addLogEntry(`✓ 静默打印成功: ${filename}`);
+            } else {
+                addLogEntry(`✗ 静默打印失败: ${filename} - ${data.message}`);
+            }
+        })
+        .catch(error => {
+            console.error('静默打印失败:', error);
+            addLogEntry(`✗ 静默打印失败: ${filename} - 网络错误`);
+        });
+    }
+    
+    printAllBtn.addEventListener('click', function() {
+        const printer = document.getElementById('printerSelect').value;
+        const copies = document.getElementById('copiesInput').value;
+        const duplex = document.getElementById('duplexSelect').value;
+        const paperSize = document.getElementById('paperSizeInput').value;
+        
+        fetch('/print_all', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                printer: printer,
+                copies: parseInt(copies),
+                duplex: parseInt(duplex),
+                paper_size: paperSize,
+                quality: 'normal'
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                addLogEntry(`✓ 静默批量打印完成，共打印 ${data.printed_count} 个文件`);
+            } else {
+                addLogEntry(`✗ 静默批量打印失败: ${data.message}`);
+            }
+        })
+        .catch(error => {
+            console.error('静默批量打印失败:', error);
+            addLogEntry('✗ 静默批量打印失败: 网络错误');
+        });
+    });
+    
+    function addLogEntry(message) {
+        const li = document.createElement('li');
+        li.className = 'list-group-item';
+        li.textContent = new Date().toLocaleString() + ' ' + message;
+        logList.insertBefore(li, logList.firstChild);
+        
+        if (logList.children.length > 10) {
+            logList.removeChild(logList.lastChild);
+        }
+    }
+	
+	window.showDeleteModal = function(filename) {
+		fetch('/api/files')
+		.then(response => response.json())
+		.then(files => {
+			const fileInfo = files.find(f => f.name === filename);
+			if (fileInfo) {
+				document.getElementById('deleteFileName').textContent = filename;
+				document.getElementById('deleteFileSize').textContent = formatFileSize(fileInfo.size);
+				document.getElementById('deleteFileTime').textContent = fileInfo.created_time;
+				
+				const confirmBtn = document.getElementById('confirmDeleteBtn');
+				confirmBtn.onclick = () => confirmDelete(filename);
+				
+				const modal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+				modal.show();
+			}
+		})
+		.catch(error => {
+			console.error('获取文件信息失败:', error);
+			alert('获取文件信息失败');
+		});
+	}
+
+	function confirmDelete(filename) {
+		fetch('/delete_file', {
+			method: 'POST',
+			headers: {'Content-Type': 'application/json'},
+			body: JSON.stringify({filename: filename})
+		})
+		.then(response => response.json())
+		.then(data => {
+			const modal = bootstrap.Modal.getInstance(document.getElementById('deleteConfirmModal'));
+			modal.hide();
+			
+			if (data.success) {
+				refreshFileList();
+			} else {
+				addLogEntry(`❌ 删除失败: ${filename} - ${data.message}`);
+				alert(`删除失败: ${data.message}`);
+			}
+		})
+		.catch(error => {
+			alert('删除失败: 网络错误');
+			const modal = bootstrap.Modal.getInstance(document.getElementById('deleteConfirmModal'));
+			modal.hide();
+		});
+	}
+
+	function formatFileSize(bytes) {
+		if (bytes === 0) return '0 B';
+		const k = 1024;
+		const sizes = ['B', 'KB', 'MB', 'GB'];
+		const i = Math.floor(Math.log(bytes) / Math.log(k));
+		return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+	}
+    refreshFileList();
+});
+</script>
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteConfirmModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteConfirmModalLabel">确认删除文件</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    <strong>警告：</strong> 删除操作不可恢复！
+                </div>
+                <p>您确定要删除以下文件吗？</p>
+                <div id="deleteFileInfo">
+                    <p><strong>文件名：</strong> <span id="deleteFileName"></span></p>
+                    <p><strong>文件大小：</strong> <span id="deleteFileSize"></span></p>
+                    <p><strong>创建时间：</strong> <span id="deleteFileTime"></span></p>
+                </div>
+                <p class="text-muted small">注意：将同时删除源文件和对应的PDF文件</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">确认删除</button>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
