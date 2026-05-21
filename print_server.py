@@ -35,6 +35,94 @@ try:
 except ImportError:
     OFFICE_AVAILABLE = False
 
+def _check_wps():
+    """Check if WPS Office COM is registered without launching any process."""
+    if not OFFICE_AVAILABLE:
+        return False
+    try:
+        import winreg
+        # Check personal edition ProgIDs
+        for progid in ['WPS.Application', 'ET.Application', 'WPP.Application']:
+            try:
+                key = winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, progid + '\\CLSID')
+                winreg.CloseKey(key)
+                return True  # At least one WPS component found
+            except Exception:
+                continue
+        # Check enterprise edition ProgIDs
+        for progid in ['KWPS.Application', 'KET.Application', 'KWPP.Application']:
+            try:
+                key = winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, progid + '\\CLSID')
+                winreg.CloseKey(key)
+                return True
+            except Exception:
+                continue
+        return False
+    except Exception:
+        return False
+
+WPS_AVAILABLE = _check_wps()
+
+def find_libreoffice():
+    """Locate LibreOffice soffice.exe. Returns path or None."""
+    candidates = [
+        r'C:\Program Files\LibreOffice\program\soffice.exe',
+        r'C:\Program Files (x86)\LibreOffice\program\soffice.exe',
+        r'C:\LibreOffice\program\soffice.exe',
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    # Try PATH
+    for path_dir in os.environ.get('PATH', '').split(os.pathsep):
+        candidate = os.path.join(path_dir, 'soffice.exe')
+        if os.path.exists(candidate):
+            return candidate
+    return None
+
+LIBREOFFICE_PATH = find_libreoffice()
+LIBREOFFICE_AVAILABLE = LIBREOFFICE_PATH is not None
+
+# ---------- Excel sheet reading (pure Python, for area selection) ----------
+def _get_excel_sheets_xlsx(filepath):
+    wb = None
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(filepath, read_only=True)
+        return wb.sheetnames
+    except Exception:
+        return None
+    finally:
+        if wb:
+            try:
+                wb.close()
+            except Exception:
+                pass
+
+def _get_excel_sheets_xls(filepath):
+    wb = None
+    try:
+        import xlrd
+        wb = xlrd.open_workbook(filepath)
+        return [s.name for s in wb.sheets()]
+    except Exception:
+        return None
+    finally:
+        if wb:
+            try:
+                wb.release_resources()
+            except Exception:
+                pass
+
+def get_excel_sheets(filepath):
+    """Return list of sheet names for an Excel file, or None if unreadable."""
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext == '.xlsx':
+        return _get_excel_sheets_xlsx(filepath)
+    elif ext == '.xls':
+        return _get_excel_sheets_xls(filepath)
+    return None
+
 def clean_old_files(folder=None, expire_seconds=3600):
     if folder is None:
         folder = UPLOAD_FOLDER
@@ -96,7 +184,40 @@ def create_simple_printer_icon():
     
     return image
 
-def silent_print_pdf(pdf_path, printer_name, copies=1, duplex=1):
+def parse_page_range(range_str, total_pages):
+    """Parse page range string like '1-5', '1,3,7-9', 'all'. Returns list of 0-indexed page numbers."""
+    range_str = (range_str or '').strip()
+    if not range_str or range_str.lower() == 'all':
+        return list(range(total_pages))
+
+    pages = set()
+    for part in range_str.split(','):
+        part = part.strip()
+        if '-' in part:
+            try:
+                start, end = part.split('-', 1)
+                start, end = int(start.strip()), int(end.strip())
+                if start < 1:
+                    start = 1
+                if end > total_pages:
+                    end = total_pages
+                for p in range(start, end + 1):
+                    pages.add(p - 1)
+            except ValueError:
+                continue
+        else:
+            try:
+                p = int(part)
+                if 1 <= p <= total_pages:
+                    pages.add(p - 1)
+            except ValueError:
+                continue
+
+    if not pages:
+        return list(range(total_pages))
+    return sorted(pages)
+
+def silent_print_pdf(pdf_path, printer_name, copies=1, duplex=1, orientation='portrait', page_range=None):
     if not PYMUPDF_AVAILABLE:
         raise Exception("PyMuPDF未安装，无法使用静默打印")
     
@@ -116,10 +237,13 @@ def silent_print_pdf(pdf_path, printer_name, copies=1, duplex=1):
             printer_size = hdc.GetDeviceCaps(win32con.PHYSICALWIDTH), hdc.GetDeviceCaps(win32con.PHYSICALHEIGHT)
             printer_margins = hdc.GetDeviceCaps(win32con.PHYSICALOFFSETX), hdc.GetDeviceCaps(win32con.PHYSICALOFFSETY)
             
+            total_pages = len(pdf_doc)
+            page_list = parse_page_range(page_range, total_pages)
+
             for copy_num in range(copies):
                 hdc.StartDoc("PDF Silent Print")
-                
-                for page_num in range(len(pdf_doc)):
+
+                for page_num in page_list:
                     hdc.StartPage()
                     
                     page = pdf_doc[page_num]
@@ -128,7 +252,14 @@ def silent_print_pdf(pdf_path, printer_name, copies=1, duplex=1):
                     
                     img_data = pix.tobytes("ppm")
                     img = PILImage.open(io.BytesIO(img_data))
-                    
+
+                    if orientation == 'landscape':
+                        img = img.rotate(90, expand=True)
+                    elif orientation == 'reverse_landscape':
+                        img = img.rotate(-90, expand=True)
+                    elif orientation == 'reverse_portrait':
+                        img = img.rotate(180, expand=True)
+
                     img_width, img_height = img.size
                     scale_x = printable_area[0] / img_width
                     scale_y = printable_area[1] / img_height
@@ -319,10 +450,10 @@ def convert_text_to_pdf(text_path, output_path, page_size=A4):
         print(f"文本转PDF失败: {e}")
         return False
         
-def convert_office_to_pdf_com_silent(office_path, output_path):
+def convert_office_to_pdf_com_silent(office_path, output_path, sheet_name=None, print_area=None):
     try:
         pythoncom.CoInitialize()
-        
+
         ext = office_path.lower().split('.')[-1]
         abs_office_path = os.path.abspath(office_path)
         abs_output_path = os.path.abspath(output_path)
@@ -369,10 +500,24 @@ def convert_office_to_pdf_com_silent(office_path, output_path):
             excel.DisplayAlerts = False
             excel.EnableEvents = False
             excel.ScreenUpdating = False
-            
+
             try:
                 wb = excel.Workbooks.Open(abs_office_path, ReadOnly=True)
-                
+
+                if sheet_name:
+                    try:
+                        ws = wb.Worksheets(sheet_name)
+                        ws.Activate()
+                    except Exception:
+                        pass  # fall back to active sheet if name not found
+
+                if print_area:
+                    try:
+                        ws = wb.ActiveSheet
+                        ws.PageSetup.PrintArea = print_area
+                    except Exception:
+                        pass
+
                 success = False
                 try:
                     wb.ExportAsFixedFormat(0, abs_output_path)
@@ -388,9 +533,9 @@ def convert_office_to_pdf_com_silent(office_path, output_path):
                             success = True
                         except Exception:
                             pass
-                
+
                 wb.Close(SaveChanges=False)
-                    
+
             finally:
                 excel.Quit()
                 
@@ -461,17 +606,324 @@ def convert_office_to_pdf_com_silent(office_path, output_path):
         except:
             pass
 
+# ---------- WPS Office COM conversion ----------
+_WPS_WORD_CLSIDS = ['WPS.Application', 'KWPS.Application']
+_WPS_EXCEL_CLSIDS = ['ET.Application', 'KET.Application', 'Excel.Application']
+_WPS_PPT_CLSIDS = ['WPP.Application', 'KWPP.Application']
+
+
+def _try_create_wps_com(progids):
+    """Try creating a COM object from a list of ProgIDs. Returns the object or None."""
+    for pid in progids:
+        try:
+            return comtypes.client.CreateObject(pid)
+        except Exception:
+            continue
+    return None
+
+
+def convert_office_to_pdf_wps(office_path, output_path, sheet_name=None, print_area=None):
+    """Use WPS Office COM automation to convert Office docs to PDF."""
+    try:
+        pythoncom.CoInitialize()
+
+        ext = office_path.lower().split('.')[-1]
+        abs_office_path = os.path.abspath(office_path)
+        abs_output_path = os.path.abspath(output_path)
+
+        output_dir = os.path.dirname(abs_output_path)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        if not os.path.exists(abs_office_path):
+            raise Exception(f"输入文件不存在: {abs_office_path}")
+
+        if ext in ['doc', 'docx']:
+            word = _try_create_wps_com(_WPS_WORD_CLSIDS)
+            if not word:
+                return False
+            word.Visible = False
+            try:
+                word.DisplayAlerts = False
+            except Exception:
+                pass
+
+            try:
+                try:
+                    doc = word.Documents.Open(abs_office_path, ReadOnly=True, Visible=False)
+                except Exception:
+                    doc = word.Documents.Open(abs_office_path, ReadOnly=True)
+
+                success = False
+                try:
+                    doc.ExportAsFixedFormat(abs_output_path, 17)
+                    success = True
+                except Exception:
+                    try:
+                        doc.SaveAs(abs_output_path, 17)
+                        success = True
+                    except Exception:
+                        try:
+                            doc.SaveAs(abs_output_path)
+                            success = True
+                        except Exception:
+                            pass
+
+                try:
+                    doc.Close(SaveChanges=False)
+                except Exception:
+                    pass
+
+            finally:
+                try:
+                    word.Quit()
+                except Exception:
+                    pass
+
+        elif ext in ['xls', 'xlsx']:
+            excel = _try_create_wps_com(_WPS_EXCEL_CLSIDS)
+            if not excel:
+                print("WPS: 无法创建 Excel COM 对象")
+                return False
+            excel.Visible = False
+            try:
+                excel.DisplayAlerts = False
+            except Exception:
+                pass
+            try:
+                excel.ScreenUpdating = False
+            except Exception:
+                pass
+
+            try:
+                try:
+                    wb = excel.Workbooks.Open(abs_office_path, ReadOnly=True)
+                except Exception:
+                    try:
+                        wb = excel.Workbooks.Open(abs_office_path)
+                    except Exception:
+                        wb = excel.Workbooks.Open(abs_office_path, False)
+
+                if sheet_name:
+                    try:
+                        ws = wb.Worksheets(sheet_name)
+                        ws.Activate()
+                    except Exception:
+                        try:
+                            ws = wb.Sheets(sheet_name)
+                            ws.Activate()
+                        except Exception:
+                            pass
+
+                if print_area:
+                    try:
+                        ws = wb.ActiveSheet
+                        ws.PageSetup.PrintArea = print_area
+                    except Exception:
+                        pass
+
+                success = False
+                # WPS ET supports ExportAsFixedFormat with Type=0 (PDF)
+                errors = []
+                try:
+                    wb.ExportAsFixedFormat(0, abs_output_path)
+                    success = True
+                except Exception as e1:
+                    errors.append(str(e1))
+                    try:
+                        ws = wb.ActiveSheet
+                        ws.ExportAsFixedFormat(0, abs_output_path)
+                        success = True
+                    except Exception as e2:
+                        errors.append(str(e2))
+                        # Some WPS versions use SaveAs with PDF format
+                        for fmt in [57, 0, 6]:
+                            try:
+                                wb.SaveAs(abs_output_path, fmt)
+                                success = True
+                                break
+                            except Exception:
+                                continue
+                        if not success:
+                            try:
+                                ws = wb.ActiveSheet
+                                ws.SaveAs(abs_output_path)
+                                success = True
+                            except Exception as e3:
+                                errors.append(str(e3))
+
+                if not success:
+                    print(f"WPS Excel 全部导出方式失败: {'; '.join(errors[:3])}")
+
+                try:
+                    wb.Close(SaveChanges=False)
+                except Exception:
+                    pass
+
+            finally:
+                try:
+                    excel.Quit()
+                except Exception:
+                    pass
+
+        elif ext in ['ppt', 'pptx']:
+            ppt = _try_create_wps_com(_WPS_PPT_CLSIDS)
+            if not ppt:
+                return False
+            try:
+                try:
+                    ppt.Visible = 0
+                except Exception:
+                    pass
+
+                try:
+                    try:
+                        presentation = ppt.Presentations.Open(abs_office_path)
+                    except Exception:
+                        presentation = ppt.Presentations.Open(abs_office_path, ReadOnly=True)
+
+                    success = False
+                    try:
+                        presentation.ExportAsFixedFormat(abs_output_path, 2)
+                        success = True
+                    except Exception:
+                        try:
+                            presentation.SaveAs(abs_output_path, 32)
+                            success = True
+                        except Exception:
+                            try:
+                                presentation.Export(abs_output_path, "PDF")
+                                success = True
+                            except Exception:
+                                try:
+                                    presentation.SaveAs(abs_output_path)
+                                    success = True
+                                except Exception:
+                                    pass
+
+                    try:
+                        presentation.Close()
+                    except Exception:
+                        pass
+
+                except Exception as file_error:
+                    print(f"WPS PowerPoint 文件处理失败: {file_error}")
+                    return False
+
+            finally:
+                try:
+                    if 'ppt' in locals():
+                        ppt.Quit()
+                except Exception:
+                    pass
+
+        else:
+            return False
+
+        if os.path.exists(abs_output_path) and os.path.getsize(abs_output_path) > 0:
+            return True
+        else:
+            return False
+
+    except Exception as e:
+        print(f"WPS COM 组件转换失败: {e}")
+        return False
+    finally:
+        try:
+            pythoncom.CoUninitialize()
+        except Exception:
+            pass
+
+
 def sanitize_filename(filename):
     import re
     filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
     filename = filename.strip('. ')
     return filename
 
-def convert_to_pdf(file_path, output_dir):
+def convert_office_to_pdf_libreoffice(office_path, output_path, sheet_name=None):
+    """Use LibreOffice headless to convert Office docs to PDF."""
+    if not LIBREOFFICE_AVAILABLE:
+        return False
+    try:
+        abs_input = os.path.abspath(office_path)
+        output_dir = os.path.abspath(os.path.dirname(output_path))
+        os.makedirs(output_dir, exist_ok=True)
+
+        # If sheet_name is specified for Excel, extract that sheet to a temp file
+        convert_path = abs_input
+        tmp_file = None
+        if sheet_name:
+            ext = os.path.splitext(abs_input)[1].lower()
+            if ext in ['.xlsx', '.xls']:
+                wb_src = None
+                wb_new = None
+                try:
+                    import tempfile
+                    if ext == '.xlsx':
+                        import openpyxl
+                        wb_src = openpyxl.load_workbook(abs_input)
+                        if sheet_name in wb_src.sheetnames:
+                            wb_new = openpyxl.Workbook()
+                            wb_new.remove(wb_new.active)
+                            ws_src = wb_src[sheet_name]
+                            ws_new = wb_new.create_sheet(title=sheet_name)
+                            for row in ws_src.iter_rows():
+                                for cell in row:
+                                    ws_new.cell(row=cell.row, column=cell.column, value=cell.value)
+                            tmp_fd, tmp_file = tempfile.mkstemp(suffix='.xlsx')
+                            os.close(tmp_fd)
+                            wb_new.save(tmp_file)
+                            convert_path = tmp_file
+                    elif ext == '.xls':
+                        # xlrd can read .xls but not write .xlsx, so skip sheet extraction for .xls
+                        pass
+                except Exception as e:
+                    print(f"提取工作表失败，使用整个文件: {e}")
+                finally:
+                    if wb_src:
+                        try:
+                            wb_src.close()
+                        except Exception:
+                            pass
+                    if wb_new:
+                        try:
+                            wb_new.close()
+                        except Exception:
+                            pass
+
+        cmd = [LIBREOFFICE_PATH, '--headless', '--convert-to', 'pdf',
+               '--outdir', output_dir, convert_path]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+
+        # Clean up temp file
+        if tmp_file and os.path.exists(tmp_file):
+            try:
+                os.remove(tmp_file)
+            except Exception:
+                pass
+
+        # LibreOffice produces <basename>.pdf in output_dir
+        base_name = os.path.splitext(os.path.basename(convert_path))[0]
+        lo_pdf = os.path.join(output_dir, base_name + '.pdf')
+        if os.path.exists(lo_pdf):
+            if os.path.abspath(lo_pdf) != os.path.abspath(output_path):
+                import shutil
+                shutil.move(lo_pdf, output_path)
+            return True
+        return False
+    except subprocess.TimeoutExpired:
+        print("LibreOffice 转换超时")
+        return False
+    except Exception as e:
+        print(f"LibreOffice 转换失败: {e}")
+        return False
+
+def convert_to_pdf(file_path, output_dir, sheet_name=None, print_area=None):
     filename = os.path.basename(file_path)
     name, ext = os.path.splitext(filename)
     ext = ext.lower()
-    
+
     clean_name = sanitize_filename(name)
     pdf_filename = f"{clean_name}.pdf"
     pdf_path = os.path.join(output_dir, pdf_filename)
@@ -494,16 +946,35 @@ def convert_to_pdf(file_path, output_dir):
             return pdf_path
     
     elif ext in ['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx']:
-        if OFFICE_AVAILABLE:
-            if convert_office_to_pdf_com_silent(file_path, pdf_path):
-                return pdf_path
-            else:
-                print(f"Office文件转换失败: {filename}")
-        else:
-            print("Office COM组件不可用")
-    
+        # Chain: MS Office COM → WPS COM → LibreOffice
+        def _try_office_chain():
+            if OFFICE_AVAILABLE:
+                return convert_office_to_pdf_com_silent(file_path, pdf_path, sheet_name, print_area)
+            return None
+
+        def _try_wps_chain():
+            if WPS_AVAILABLE:
+                return convert_office_to_pdf_wps(file_path, pdf_path, sheet_name, print_area)
+            return None
+
+        def _try_libreoffice_chain():
+            if LIBREOFFICE_AVAILABLE:
+                return convert_office_to_pdf_libreoffice(file_path, pdf_path, sheet_name)
+            return None
+
+        for attempt, name in [(_try_office_chain, 'Office COM'),
+                               (_try_wps_chain, 'WPS'),
+                               (_try_libreoffice_chain, 'LibreOffice')]:
+            result = attempt()
+            if result:
+                return pdf_path  # Return the output path, not the boolean
+            if result is False:  # Tried and failed (not just unavailable)
+                print(f"{name} 转换失败，尝试下一个引擎: {filename}")
+
+        print("无可用的转换引擎 (Office COM/WPS/LibreOffice)")
+
     return None
-    
+
 def get_resource_path(relative_path):
     try:
         base_path = sys._MEIPASS
@@ -579,11 +1050,13 @@ def index():
     files = get_file_info()
     logs = get_logs()
     
-    return render_template('index.html', 
-                         printers=PRINTERS, 
-                         files=files, 
+    return render_template('index.html',
+                         printers=PRINTERS,
+                         files=files,
                          logs=logs,
                          office_available=OFFICE_AVAILABLE,
+                         wps_available=WPS_AVAILABLE,
+                         libreoffice_available=LIBREOFFICE_AVAILABLE,
                          pymupdf_available=PYMUPDF_AVAILABLE)
 
 @app.route('/upload', methods=['POST'])
@@ -629,17 +1102,32 @@ def print_single():
     duplex = data.get('duplex', 1)
     paper_size = data.get('paper_size', 'A4')
     quality = data.get('quality', 'normal')
-    
+    orientation = data.get('orientation', 'portrait')
+    page_range = data.get('page_range', 'all')
+    sheet_name = data.get('sheet_name')
+    print_area = data.get('print_area')
+
     try:
         name, ext = os.path.splitext(filename)
+        ext_lower = ext.lower()
         pdf_name = f"{name}.pdf"
         pdf_path = os.path.join(PDF_FOLDER, pdf_name)
-        
+
+        # If Excel with sheet/area selection, re-convert before printing
+        if ext_lower in ['.xls', '.xlsx'] and (sheet_name or print_area):
+            original_path = os.path.join(UPLOAD_FOLDER, filename)
+            if os.path.exists(original_path):
+                new_pdf = convert_to_pdf(original_path, PDF_FOLDER, sheet_name, print_area)
+                if new_pdf:
+                    pdf_path = new_pdf
+                else:
+                    return jsonify({'success': False, 'message': '按选定工作表/区域转换PDF失败'})
+
         if not os.path.exists(pdf_path):
             return jsonify({'success': False, 'message': '文件未转换为PDF，无法静默打印'})
-        
+
         try:
-            silent_print_pdf(pdf_path, printer, copies, duplex)
+            silent_print_pdf(pdf_path, printer, copies, duplex, orientation, page_range)
             log_print(filename, printer, copies, duplex, paper_size, quality, "静默打印成功")
             return jsonify({'success': True, 'message': '静默打印成功'})
         except Exception as e:
@@ -647,10 +1135,10 @@ def print_single():
                 error_msg = f"静默打印失败: {str(e)}"
             else:
                 error_msg = "PyMuPDF未安装，无法静默打印"
-            
+
             log_print(filename, printer, copies, duplex, paper_size, quality, error_msg)
             return jsonify({'success': False, 'message': error_msg})
-            
+
     except Exception as e:
         error_msg = f"打印失败: {str(e)}"
         log_print(filename, printer, copies, duplex, paper_size, quality, error_msg)
@@ -664,19 +1152,21 @@ def print_all():
     duplex = data.get('duplex', 1)
     paper_size = data.get('paper_size', 'A4')
     quality = data.get('quality', 'normal')
-    
+    orientation = data.get('orientation', 'portrait')
+    page_range = data.get('page_range', 'all')
+
     if not PYMUPDF_AVAILABLE:
         return jsonify({'success': False, 'message': 'PyMuPDF未安装，无法静默打印'})
-    
+
     try:
         files = get_file_info()
         printed_count = 0
         failed_count = 0
-        
+
         for file_info in files:
             if file_info['pdf_path'] and os.path.exists(file_info['pdf_path']):
                 try:
-                    silent_print_pdf(file_info['pdf_path'], printer, copies, duplex)
+                    silent_print_pdf(file_info['pdf_path'], printer, copies, duplex, orientation, page_range)
                     log_print(file_info['name'], printer, copies, duplex, paper_size, quality, "静默批量打印成功")
                     printed_count += 1
                 except Exception as e:
@@ -697,6 +1187,73 @@ def print_all():
 @app.route('/api/files')
 def get_files_api():
     return jsonify(get_file_info())
+
+@app.route('/api/page_count/<filename>')
+def api_page_count(filename):
+    pdf_path = os.path.join(PDF_FOLDER, filename)
+    if not os.path.exists(pdf_path):
+        return jsonify({'success': False, 'message': 'PDF文件不存在'})
+    try:
+        if PYMUPDF_AVAILABLE:
+            doc = fitz.open(pdf_path)
+            count = len(doc)
+            doc.close()
+            return jsonify({'success': True, 'page_count': count})
+        else:
+            return jsonify({'success': False, 'message': 'PyMuPDF未安装'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/api/excel_info/<filename>')
+def api_excel_info(filename):
+    """Return sheet names for an Excel file."""
+    upload_path = os.path.join(UPLOAD_FOLDER, filename)
+    if not os.path.exists(upload_path):
+        return jsonify({'success': False, 'message': '文件不存在'})
+    sheets = get_excel_sheets(upload_path)
+    if sheets is not None:
+        return jsonify({'success': True, 'sheets': sheets, 'sheet_count': len(sheets)})
+    return jsonify({'success': False, 'message': '无法读取工作表（需安装 openpyxl 或 xlrd）'})
+
+@app.route('/api/excel_preview/<filename>')
+def api_excel_preview(filename):
+    """Return first N rows of an Excel sheet as a 2D array for visual range selection."""
+    sheet_name = request.args.get('sheet', '')
+    upload_path = os.path.join(UPLOAD_FOLDER, filename)
+    if not os.path.exists(upload_path):
+        return jsonify({'success': False, 'message': '文件不存在'})
+    try:
+        ext = os.path.splitext(upload_path)[1].lower()
+        rows = []
+        max_cols = 0
+        if ext == '.xlsx':
+            import openpyxl
+            wb = openpyxl.load_workbook(upload_path, read_only=True, data_only=True)
+            ws = wb[sheet_name] if sheet_name and sheet_name in wb.sheetnames else wb.active
+            for row in ws.iter_rows(max_row=100, max_col=26, values_only=True):
+                vals = [str(v) if v is not None else '' for v in row]
+                if any(vals):
+                    rows.append(vals)
+                    max_cols = max(max_cols, len(vals))
+            wb.close()
+        elif ext == '.xls':
+            import xlrd
+            wb = xlrd.open_workbook(upload_path)
+            ws = wb.sheet_by_name(sheet_name) if sheet_name else wb.sheet_by_index(0)
+            for r in range(min(ws.nrows, 100)):
+                vals = [str(ws.cell_value(r, c)) if ws.cell_value(r, c) != '' else '' for c in range(min(ws.ncols, 26))]
+                if any(vals):
+                    rows.append(vals)
+                    max_cols = max(max_cols, len(vals))
+
+        if not rows:
+            rows = [['' for _ in range(5)] for _ in range(3)]  # fallback empty grid
+
+        cols = max(10, min(26, max_cols or 10))
+        headers = [chr(65 + i) for i in range(cols)]
+        return jsonify({'success': True, 'rows': rows, 'col_count': cols, 'headers': headers})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
 
 @app.route('/preview/<filename>')
 def preview_file(filename):
@@ -786,23 +1343,25 @@ def build_menu(icon):
 
 def setup_tray():
     image = create_simple_printer_icon()
-    icon = pystray.Icon('print_server', image, '内网打印服务(静默版)')
+    icon = pystray.Icon('print_server', image, 'PrintServer')
     icon.menu = build_menu(icon)
     icon.run()
 
 if __name__ == '__main__':
-    print("正在启动内网打印服务...")
+    print("正在启动PrintServer...")
     print(f"本机IP: {get_local_ip()}")
     print(f"服务端口: 5000")
     print(f"转换库状态:")
     print(f"  PyMuPDF: {'可用' if PYMUPDF_AVAILABLE else '未安装 - 静默打印功能不可用'}")
     print(f"  Office COM: {'可用' if OFFICE_AVAILABLE else '未安装Office'}")
+    print(f"  WPS Office: {'可用' if WPS_AVAILABLE else '未安装'}")
+    print(f"  LibreOffice: {'可用' if LIBREOFFICE_AVAILABLE else '未安装'}")
     
     if not PYMUPDF_AVAILABLE:
         print("\n⚠️  警告：PyMuPDF未安装，静默打印功能不可用！")
         print("请运行以下命令安装：pip install PyMuPDF")
     else:
-        print("\n✅ 静默打印功能已就绪，使用Windows底层API，完全无界面弹出")
+        print("\n✅ PrintServer已就绪，使用Windows底层API，完全无界面弹出")
     
     print("支持拖拽上传，服务启动中...")
     

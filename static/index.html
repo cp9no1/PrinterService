@@ -3,7 +3,8 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>内网打印服务</title>
+    <title>Print Server</title>
+	<link rel="icon" href="/static/favicon.ico" type="image/x-icon">
     <link href="/static/bootstrap.min.css" rel="stylesheet">
     <style>
         body { 
@@ -203,27 +204,57 @@
                 overflow: visible;
             }
         }
+
+        .page-num-btn {
+            width: 36px; height: 36px;
+            border: 1px solid #ccc;
+            background: #fff;
+            border-radius: 4px;
+            margin: 2px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            padding: 0;
+            transition: all 0.15s;
+        }
+        .page-num-btn:hover { border-color: #007bff; background: #e6f0ff; }
+        .page-num-btn.active { background: #007bff; color: #fff; border-color: #0056b3; }
+        .page-grid { max-height: 260px; overflow-y: auto; display: flex; flex-wrap: wrap; align-content: flex-start; }
+        .page-quick-btns { margin-bottom: 10px; }
+        .page-quick-btns .btn { font-size: 0.75rem; padding: 0.2rem 0.5rem; margin-right: 4px; }
+
+        .excel-grid-table { border-collapse: collapse; }
+        .excel-grid-table th, .excel-grid-table td { border: 1px solid #ddd; padding: 2px 6px; min-width: 60px; max-width: 140px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+        .excel-grid-table th { background: #f0f0f0; text-align: center; font-weight: 600; position: sticky; top: 0; z-index: 2; }
+        .excel-grid-table .row-header { background: #f0f0f0; text-align: center; font-weight: 600; position: sticky; left: 0; z-index: 1; min-width: 40px; max-width: 40px; }
+        .excel-grid-table .corner-header { position: sticky; top: 0; left: 0; z-index: 3; background: #e0e0e0; }
+        .excel-grid-table td.selected { background: #b3d9ff !important; }
+        .excel-grid-table td:hover { background: #e6f0ff; cursor: cell; }
+        .excel-grid-table td.selected:hover { background: #99c7ff !important; }
     </style>
 </head>
 <body>
 <div class="main-container">
     <div class="left-panel">
         <div class="left-content">
-            <h1 class="text-center">内网打印服务</h1>
             
             <div class="silent-print-info">
-                <strong>🔧 静默打印功能:</strong> 使用Windows底层打印API，完全避免弹出任何程序界面
+                <a href="https://github.com/cp9no1/PrinterService/issues"><strong>💿️ 提交Issue</strong></a>
             </div>
-            
+
             <div class="conversion-info">
-				<strong>转换能力状态:</strong><br>
+				<strong>环境状态:</strong><br>
 				<span class="{% if pymupdf_available %}status-good{% else %}status-missing{% endif %}">
-					PDF处理(PyMuPDF): {{ '✓ 可用' if pymupdf_available else '✗ 未安装 - 静默打印功能不可用' }}
+					PDF处理(PyMuPDF): {{ '✓ 可用' if pymupdf_available else '✗ 未安装 - 打印功能不可用' }}
 				</span><br>
 				<span class="{% if office_available %}status-good{% else %}status-missing{% endif %}">
 					Office COM组件: {{ '✓ 可用' if office_available else '✗ 未安装Office' }}
+				</span><br>
+				<span class="{% if wps_available %}status-good{% else %}status-missing{% endif %}">
+					WPS Office: {{ '✓ 可用' if wps_available else '✗ 未安装（可安装作为备选）' }}
+				</span><br>
+				<span class="{% if libreoffice_available %}status-good{% else %}status-missing{% endif %}">
+					LibreOffice: {{ '✓ 可用' if libreoffice_available else '✗ 未安装（可安装作为备选）' }}
 				</span>
-				<br><small>所有转换都是完全静默的，不会弹出任何界面</small>
 			</div>
             
             <div class="print-settings">
@@ -246,6 +277,20 @@
                         <input type="text" id="paperSizeInput" value="A4" class="form-control">
                     </div>
                     <div class="col-12">
+                        <label class="form-label">打印方向</label>
+                        <select id="orientationSelect" class="form-select">
+                            <option value="portrait">纵向</option>
+                            <option value="landscape">横向</option>
+                            <option value="reverse_landscape">反向横向</option>
+                            <option value="reverse_portrait">反向纵向</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">打印范围</label>
+                        <input type="text" id="pageRangeInput" value="all" placeholder="如: 1-5, 1,3,7-9, all" class="form-control">
+                        <small class="text-muted">留空或输入"all"打印全部，多页用逗号分隔</small>
+                    </div>
+                    <div class="col-12">
                         <label class="form-label">单双面</label>
                         <select id="duplexSelect" class="form-select">
                             <option value="1">单面</option>
@@ -254,7 +299,7 @@
                         </select>
                     </div>
                     <div class="col-12">
-                        <button id="printAllBtn" class="btn btn-success w-100">静默打印全部PDF文件</button>
+                        <button id="printAllBtn" class="btn btn-success w-100">批量打印全部文件</button>
                     </div>
                 </div>
             </div>
@@ -375,10 +420,10 @@ document.addEventListener('DOMContentLoaded', function() {
             
             let buttonsHtml = '';
             if (data.converted && data.pdf_name) {
-                buttonsHtml += `<button class="btn btn-primary btn-sm" onclick="printFile('${data.filename}')">🔇 静默打印</button>`;
+                buttonsHtml += `<button class="btn btn-primary btn-sm" onclick="printFile('${data.filename}')">🖨️ 打印</button>`;
                 buttonsHtml += `<a href="/preview/${data.pdf_name}" target="_blank" class="btn btn-outline-secondary btn-sm">预览PDF</a>`;
             } else {
-                buttonsHtml += `<span class="text-muted small">无法静默打印，请先转换为PDF</span>`;
+                buttonsHtml += `<span class="text-muted small">无法打印，请先转换为PDF</span>`;
             }
             buttonsHtml += `<a href="/preview/${data.filename}" target="_blank" class="btn btn-outline-info btn-sm">预览原文件</a>`;
 			buttonsHtml += `<button class="btn btn-danger btn-sm" onclick="showDeleteModal('${data.filename}')">🗑️ 删除</button>`;
@@ -414,11 +459,41 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     window.printFile = function(filename) {
+        const ext = filename.split('.').pop().toLowerCase();
+        const isExcel = (ext === 'xls' || ext === 'xlsx');
+        const pdfName = filename.replace(/\.[^.]+$/, '') + '.pdf';
+
+        // Fetch page count + Excel sheet info in parallel
+        const promises = [
+            fetch('/api/page_count/' + encodeURIComponent(pdfName)).then(r => r.json())
+        ];
+        if (isExcel) {
+            promises.push(fetch('/api/excel_info/' + encodeURIComponent(filename)).then(r => r.json()));
+        }
+
+        Promise.all(promises)
+            .then(results => {
+                const pageData = results[0];
+                const excelData = isExcel ? results[1] : null;
+                if (pageData.success) {
+                    openPrintModal(filename, pageData.page_count, excelData);
+                } else {
+                    doPrintSingle(filename);
+                }
+            })
+            .catch(() => {
+                doPrintSingle(filename);
+            });
+    }
+
+    function doPrintSingle(filename) {
         const printer = document.getElementById('printerSelect').value;
         const copies = document.getElementById('copiesInput').value;
         const duplex = document.getElementById('duplexSelect').value;
         const paperSize = document.getElementById('paperSizeInput').value;
-        
+        const orientation = document.getElementById('orientationSelect').value;
+        const pageRange = document.getElementById('pageRangeInput').value;
+
         fetch('/print_single', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -428,20 +503,222 @@ document.addEventListener('DOMContentLoaded', function() {
                 copies: parseInt(copies),
                 duplex: parseInt(duplex),
                 paper_size: paperSize,
-                quality: 'normal'
+                quality: 'normal',
+                orientation: orientation,
+                page_range: pageRange
             })
         })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                addLogEntry(`✓ 静默打印成功: ${filename}`);
+                addLogEntry(`✓ 打印成功: ${filename}`);
             } else {
-                addLogEntry(`✗ 静默打印失败: ${filename} - ${data.message}`);
+                addLogEntry(`✗ 打印失败: ${filename} - ${data.message}`);
             }
         })
         .catch(error => {
-            console.error('静默打印失败:', error);
-            addLogEntry(`✗ 静默打印失败: ${filename} - 网络错误`);
+            console.error('打印失败:', error);
+            addLogEntry(`✗ 打印失败: ${filename} - 网络错误`);
+        });
+    }
+
+    let printModalState = { filename: '', pageCount: 0, selected: new Set() };
+
+    function openPrintModal(filename, pageCount, excelData) {
+        printModalState = { filename: filename, pageCount: pageCount, selected: new Set() };
+        const rangeInput = document.getElementById('printPageRangeInput');
+        rangeInput.value = 'all';
+        buildPageGrid(pageCount);
+        document.getElementById('printModalFileName').textContent = filename;
+        document.getElementById('printModalPageCount').textContent = '共 ' + pageCount + ' 页';
+
+        // Excel sheet options
+        const excelDiv = document.getElementById('excelPrintOptions');
+        const sheetSelect = document.getElementById('sheetSelect');
+        if (excelData && excelData.success && excelData.sheets && excelData.sheets.length > 0) {
+            sheetSelect.innerHTML = '';
+            excelData.sheets.forEach(function(s) {
+                const opt = document.createElement('option');
+                opt.value = s;
+                opt.textContent = s;
+                sheetSelect.appendChild(opt);
+            });
+            document.getElementById('printAreaInput').value = '';
+            excelDiv.style.display = 'block';
+        } else {
+            excelDiv.style.display = 'none';
+        }
+
+        const modal = new bootstrap.Modal(document.getElementById('printPageModal'));
+        modal.show();
+    }
+
+    function buildPageGrid(pageCount) {
+        const grid = document.getElementById('pageGrid');
+        grid.innerHTML = '';
+        const maxShow = Math.min(pageCount, 40);
+        for (let i = 1; i <= maxShow; i++) {
+            const btn = document.createElement('button');
+            btn.className = 'page-num-btn';
+            btn.textContent = i;
+            btn.onclick = function() { togglePage(i); };
+            grid.appendChild(btn);
+        }
+        if (pageCount > 40) {
+            const hint = document.createElement('span');
+            hint.className = 'text-muted ms-2';
+            hint.textContent = '... 共' + pageCount + '页，请用下方输入框指定范围';
+            hint.style.fontSize = '0.85em';
+            grid.appendChild(hint);
+        }
+    }
+
+    function togglePage(pageNum) {
+        if (printModalState.selected.has(pageNum)) {
+            printModalState.selected.delete(pageNum);
+        } else {
+            printModalState.selected.add(pageNum);
+        }
+        updatePageButtonStyle(pageNum);
+        syncGridToRange();
+    }
+
+    function updatePageButtonStyle(pageNum) {
+        const grid = document.getElementById('pageGrid');
+        const btn = grid.children[pageNum - 1];
+        if (btn && btn.classList.contains('page-num-btn')) {
+            if (printModalState.selected.has(pageNum)) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        }
+    }
+
+    function syncGridToRange() {
+        if (printModalState.selected.size === 0) {
+            document.getElementById('printPageRangeInput').value = '';
+            return;
+        }
+        if (printModalState.selected.size === printModalState.pageCount) {
+            document.getElementById('printPageRangeInput').value = 'all';
+            return;
+        }
+        const sorted = [...printModalState.selected].sort((a, b) => a - b);
+        const ranges = [];
+        let start = sorted[0], end = sorted[0];
+        for (let i = 1; i < sorted.length; i++) {
+            if (sorted[i] === end + 1) {
+                end = sorted[i];
+            } else {
+                ranges.push(start === end ? String(start) : start + '-' + end);
+                start = sorted[i];
+                end = sorted[i];
+            }
+        }
+        ranges.push(start === end ? String(start) : start + '-' + end);
+        document.getElementById('printPageRangeInput').value = ranges.join(',');
+    }
+
+    window.syncRangeToGrid = function() {
+        const rangeStr = document.getElementById('printPageRangeInput').value.trim();
+        printModalState.selected = new Set();
+        if (!rangeStr || rangeStr.toLowerCase() === 'all') {
+            for (let i = 1; i <= printModalState.pageCount; i++) {
+                printModalState.selected.add(i);
+            }
+        } else {
+            const parts = rangeStr.split(',');
+            for (const part of parts) {
+                const trimmed = part.trim();
+                if (trimmed.includes('-')) {
+                    const [s, e] = trimmed.split('-', 2);
+                    const start = parseInt(s), end = parseInt(e);
+                    if (!isNaN(start) && !isNaN(end)) {
+                        for (let i = Math.max(1, start); i <= Math.min(printModalState.pageCount, end); i++) {
+                            printModalState.selected.add(i);
+                        }
+                    }
+                } else {
+                    const p = parseInt(trimmed);
+                    if (!isNaN(p) && p >= 1 && p <= printModalState.pageCount) {
+                        printModalState.selected.add(p);
+                    }
+                }
+            }
+        }
+        for (let i = 1; i <= Math.min(printModalState.pageCount, 40); i++) {
+            updatePageButtonStyle(i);
+        }
+    }
+
+    window.pageQuickSelect = function(action) {
+        const pc = printModalState.pageCount;
+        printModalState.selected = new Set();
+        if (action === 'all') {
+            for (let i = 1; i <= pc; i++) printModalState.selected.add(i);
+        } else if (action === 'none') {
+            // keep empty
+        } else if (action === 'odd') {
+            for (let i = 1; i <= pc; i += 2) printModalState.selected.add(i);
+        } else if (action === 'even') {
+            for (let i = 2; i <= pc; i += 2) printModalState.selected.add(i);
+        }
+        for (let i = 1; i <= Math.min(pc, 40); i++) {
+            updatePageButtonStyle(i);
+        }
+        syncGridToRange();
+    }
+
+    window.confirmPrintFromModal = function() {
+        const filename = printModalState.filename;
+        const rangeStr = document.getElementById('printPageRangeInput').value.trim();
+        const effectiveRange = rangeStr || 'all';
+
+        const modal = bootstrap.Modal.getInstance(document.getElementById('printPageModal'));
+        modal.hide();
+
+        const printer = document.getElementById('printerSelect').value;
+        const copies = document.getElementById('copiesInput').value;
+        const duplex = document.getElementById('duplexSelect').value;
+        const paperSize = document.getElementById('paperSizeInput').value;
+        const orientation = document.getElementById('orientationSelect').value;
+
+        const body = {
+            filename: filename,
+            printer: printer,
+            copies: parseInt(copies),
+            duplex: parseInt(duplex),
+            paper_size: paperSize,
+            quality: 'normal',
+            orientation: orientation,
+            page_range: effectiveRange
+        };
+
+        // Include Excel sheet/area if visible
+        const excelDiv = document.getElementById('excelPrintOptions');
+        if (excelDiv.style.display !== 'none') {
+            body.sheet_name = document.getElementById('sheetSelect').value;
+            const areaVal = document.getElementById('printAreaInput').value.trim();
+            if (areaVal) body.print_area = areaVal;
+        }
+
+        fetch('/print_single', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                addLogEntry(`✓ 打印成功: ${filename}`);
+            } else {
+                addLogEntry(`✗ 打印失败: ${filename} - ${data.message}`);
+            }
+        })
+        .catch(error => {
+            console.error('打印失败:', error);
+            addLogEntry(`✗ 打印失败: ${filename} - 网络错误`);
         });
     }
     
@@ -450,7 +727,9 @@ document.addEventListener('DOMContentLoaded', function() {
         const copies = document.getElementById('copiesInput').value;
         const duplex = document.getElementById('duplexSelect').value;
         const paperSize = document.getElementById('paperSizeInput').value;
-        
+        const orientation = document.getElementById('orientationSelect').value;
+        const pageRange = document.getElementById('pageRangeInput').value;
+
         fetch('/print_all', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -459,20 +738,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 copies: parseInt(copies),
                 duplex: parseInt(duplex),
                 paper_size: paperSize,
-                quality: 'normal'
+                quality: 'normal',
+                orientation: orientation,
+                page_range: pageRange
             })
         })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                addLogEntry(`✓ 静默批量打印完成，共打印 ${data.printed_count} 个文件`);
+                addLogEntry(`✓ 批量打印完成，共打印 ${data.printed_count} 个文件`);
             } else {
-                addLogEntry(`✗ 静默批量打印失败: ${data.message}`);
+                addLogEntry(`✗ 批量打印失败: ${data.message}`);
             }
         })
         .catch(error => {
-            console.error('静默批量打印失败:', error);
-            addLogEntry('✗ 静默批量打印失败: 网络错误');
+            console.error('批量打印失败:', error);
+            addLogEntry('✗ 批量打印失败: 网络错误');
         });
     });
     
@@ -543,8 +824,268 @@ document.addEventListener('DOMContentLoaded', function() {
 		return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 	}
     refreshFileList();
+
+    // ---------- Excel grid selection ----------
+    let gridSelection = { startRow: -1, startCol: -1, endRow: -1, endCol: -1, selecting: false, multiSelect: new Set() };
+
+    window.openExcelGrid = function() {
+        const filename = printModalState.filename;
+        const ext = filename.split('.').pop().toLowerCase();
+        if (ext !== 'xls' && ext !== 'xlsx') return;
+        const sheet = document.getElementById('sheetSelect').value || '';
+
+        fetch('/api/excel_preview/' + encodeURIComponent(filename) + '?sheet=' + encodeURIComponent(sheet))
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    gridSelection = { startRow: -1, startCol: -1, endRow: -1, endCol: -1, selecting: false, multiSelect: new Set() };
+                    buildExcelGrid(data.rows, data.headers);
+                    document.getElementById('gridSelectionDisplay').textContent = '';
+                    const modal = new bootstrap.Modal(document.getElementById('excelGridModal'));
+                    modal.show();
+                } else {
+                    alert('无法加载表格数据: ' + (data.message || ''));
+                }
+            })
+            .catch(e => alert('加载表格数据失败'));
+    };
+
+    function buildExcelGrid(rows, headers) {
+        const container = document.getElementById('excelGridContainer');
+        let html = '<table class="excel-grid-table"><thead><tr><th class="corner-header"></th>';
+        headers.forEach(h => { html += '<th>' + h + '</th>'; });
+        html += '</tr></thead><tbody>';
+        rows.forEach((row, ri) => {
+            html += '<tr><td class="row-header">' + (ri + 1) + '</td>';
+            for (let ci = 0; ci < headers.length; ci++) {
+                const val = (ci < row.length) ? row[ci] : '';
+                const display = val.length > 30 ? val.substring(0, 27) + '...' : val;
+                html += '<td data-row="' + ri + '" data-col="' + ci + '">' + escapeHtml(display) + '</td>';
+            }
+            html += '</tr>';
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+
+        const tds = container.querySelectorAll('td[data-row]');
+        let sel = gridSelection;
+
+        function clearSelection() {
+            container.querySelectorAll('td.selected').forEach(td => td.classList.remove('selected'));
+        }
+        function paintSelection() {
+            clearSelection();
+            const anyMain = sel.startRow >= 0;
+            const anyMulti = sel.multiSelect.size > 0;
+            if (!anyMain && !anyMulti) { updateGridSelectionDisplay(null); return; }
+
+            // Main rectangular selection
+            if (anyMain) {
+                const r1 = Math.min(sel.startRow, sel.endRow);
+                const r2 = Math.max(sel.startRow, sel.endRow);
+                const c1 = Math.min(sel.startCol, sel.endCol);
+                const c2 = Math.max(sel.startCol, sel.endCol);
+                for (let r = r1; r <= r2; r++) {
+                    for (let c = c1; c <= c2; c++) {
+                        const td = container.querySelector('td[data-row="' + r + '"][data-col="' + c + '"]');
+                        if (td) td.classList.add('selected');
+                    }
+                }
+                updateGridSelectionDisplay(r1, c1, r2, c2, sel.multiSelect);
+            }
+
+            // Ctrl+click multi-select cells
+            sel.multiSelect.forEach(key => {
+                const [r, c] = key.split(',').map(Number);
+                const td = container.querySelector('td[data-row="' + r + '"][data-col="' + c + '"]');
+                if (td) td.classList.add('selected');
+            });
+            if (!anyMain && anyMulti) updateGridSelectionDisplay(null, null, null, null, sel.multiSelect);
+        }
+
+        tds.forEach(td => {
+            td.addEventListener('mousedown', function(e) {
+                const row = parseInt(this.dataset.row);
+                const col = parseInt(this.dataset.col);
+
+                if (e.shiftKey && sel.startRow >= 0) {
+                    // Shift+click: extend selection, anchor stays at start
+                    sel.endRow = row;
+                    sel.endCol = col;
+                    sel.multiSelect.clear();
+                    sel.selecting = false;
+                    paintSelection();
+                    e.preventDefault();
+                    return;
+                }
+
+                if (e.ctrlKey) {
+                    // Ctrl+click: toggle cell in/out of multi-select set
+                    const key = row + ',' + col;
+                    if (sel.multiSelect.has(key)) {
+                        sel.multiSelect.delete(key);
+                    } else {
+                        sel.multiSelect.add(key);
+                    }
+                    sel.selecting = false;
+                    paintSelection();
+                    e.preventDefault();
+                    return;
+                }
+
+                // Normal click/drag: new rectangular selection
+                sel.startRow = row;
+                sel.startCol = col;
+                sel.endRow = row;
+                sel.endCol = col;
+                sel.multiSelect.clear();
+                sel.selecting = true;
+                paintSelection();
+                e.preventDefault();
+            });
+            td.addEventListener('mouseenter', function() {
+                if (!sel.selecting) return;
+                sel.endRow = parseInt(this.dataset.row);
+                sel.endCol = parseInt(this.dataset.col);
+                paintSelection();
+            });
+        });
+        document.addEventListener('mouseup', function() { sel.selecting = false; });
+    }
+
+    function updateGridSelectionDisplay(r1, c1, r2, c2, multi) {
+        const colToLetter = function(c) { return String.fromCharCode(65 + c); };
+        const parts = [];
+
+        if (r1 != null && r1 >= 0) {
+            if (r1 === r2 && c1 === c2) {
+                parts.push(colToLetter(c1) + (r1 + 1));
+            } else {
+                parts.push(colToLetter(c1) + (r1 + 1) + ':' + colToLetter(c2) + (r2 + 1));
+            }
+        }
+
+        if (multi && multi.size > 0) {
+            const sorted = [...multi].map(k => k.split(',').map(Number)).sort((a, b) => a[0] !== b[0] ? a[0] - b[0] : a[1] - b[1]);
+            sorted.forEach(([r, c]) => parts.push(colToLetter(c) + (r + 1)));
+        }
+
+        const display = document.getElementById('gridSelectionDisplay');
+        if (parts.length === 0) {
+            display.textContent = '';
+        } else {
+            display.textContent = '选区: ' + parts.join(', ');
+        }
+    }
+
+    window.applyGridSelection = function() {
+        const sel = gridSelection;
+        const colToLetter = function(c) { return String.fromCharCode(65 + c); };
+        const parts = [];
+
+        if (sel.startRow >= 0) {
+            const r1 = Math.min(sel.startRow, sel.endRow);
+            const c1 = Math.min(sel.startCol, sel.endCol);
+            const r2 = Math.max(sel.startRow, sel.endRow);
+            const c2 = Math.max(sel.startCol, sel.endCol);
+            if (r1 === r2 && c1 === c2) {
+                parts.push(colToLetter(c1) + (r1 + 1));
+            } else {
+                parts.push(colToLetter(c1) + (r1 + 1) + ':' + colToLetter(c2) + (r2 + 1));
+            }
+        }
+
+        sel.multiSelect.forEach(key => {
+            const [r, c] = key.split(',').map(Number);
+            parts.push(colToLetter(c) + (r + 1));
+        });
+
+        if (parts.length === 0) {
+            alert('请先在表格中拖拽选择区域，或按住Ctrl点击单元格');
+            return;
+        }
+
+        document.getElementById('printAreaInput').value = parts.join(',');
+        const modal = bootstrap.Modal.getInstance(document.getElementById('excelGridModal'));
+        modal.hide();
+    };
+
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
 });
 </script>
+<div class="modal fade" id="printPageModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">选择打印页面 - <span id="printModalFileName"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <strong id="printModalPageCount"></strong>
+                    <div class="page-quick-btns mt-2">
+                        <button class="btn btn-outline-secondary btn-sm" onclick="pageQuickSelect('all')">全选</button>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="pageQuickSelect('none')">清空</button>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="pageQuickSelect('odd')">奇数页</button>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="pageQuickSelect('even')">偶数页</button>
+                    </div>
+                </div>
+                <div id="excelPrintOptions" style="display:none;" class="mb-3 p-3 bg-light rounded">
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <label class="form-label">工作表</label>
+                            <select id="sheetSelect" class="form-select form-select-sm"></select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">打印区域 <small class="text-muted">(可选)</small></label>
+                            <div class="input-group input-group-sm">
+                                <input type="text" id="printAreaInput" class="form-control form-control-sm" placeholder="如: A1:F20">
+                                <button class="btn btn-outline-primary" type="button" onclick="openExcelGrid()">可视选区域</button>
+                            </div>
+                        </div>
+                    </div>
+                    <small class="text-muted">选择工作表后系统将重新转换该工作表为PDF再打印</small>
+                </div>
+                <div class="page-grid mb-3" id="pageGrid"></div>
+                <div>
+                    <label class="form-label">自定义范围</label>
+                    <div class="input-group">
+                        <input type="text" id="printPageRangeInput" class="form-control" value="all" placeholder="如: 1-5, 7, 10-12" onchange="syncRangeToGrid()">
+                        <button class="btn btn-outline-secondary" onclick="syncRangeToGrid()">刷新</button>
+                    </div>
+                    <small class="text-muted">点击上方页码按钮选择，或直接输入范围后点"刷新"</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="confirmPrintFromModal()">打印选中页</button>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="excelGridModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title">表格预览 - 拖拽选择打印区域</h6>
+                <span id="gridSelectionDisplay" class="badge bg-primary ms-3"></span>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-2">
+                <div id="excelGridContainer" style="max-height:70vh;overflow:auto;position:relative;font-size:12px;user-select:none;"></div>
+            </div>
+            <div class="modal-footer py-2">
+                <small class="text-muted me-auto">鼠标按住拖拽选择单元格区域</small>
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="applyGridSelection()">确认选区</button>
+            </div>
+        </div>
+    </div>
+</div>
 <div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteConfirmModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
