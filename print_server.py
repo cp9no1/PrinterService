@@ -232,7 +232,7 @@ def silent_print_pdf(pdf_path, printer_name, copies=1, duplex=1, orientation=Non
                     
                     page = pdf_doc[page_num]
                     # 渲染到 3000 DPI（PDF 默认 72 DPI，缩放系数 = 3000/72 ≈ 41.67）
-                    render_scale = 1296.0 / 72.0
+                    render_scale = 648.0 / 72.0
                     mat = fitz.Matrix(render_scale, render_scale)
                     pix = page.get_pixmap(matrix=mat)
                     
@@ -735,10 +735,16 @@ def get_resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 STATIC_FOLDER = get_resource_path('static')
-UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
-PDF_FOLDER = os.path.join(os.getcwd(), 'pdfs')
-LOG_FILE = os.path.join(os.getcwd(), 'print_log.txt')
-DEFAULT_PRINTER_FILE = os.path.join(os.getcwd(), 'default_printer.json')
+# 以 exe 所在目录为基准，避免开机自启时工作目录是 C:\Windows\system32 导致权限错误
+if getattr(sys, 'frozen', False):
+    BASE_DIR = os.path.dirname(os.path.abspath(sys.executable))
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
+PDF_FOLDER = os.path.join(BASE_DIR, 'pdfs')
+LOG_FILE = os.path.join(BASE_DIR, 'print_log.txt')
+DEFAULT_PRINTER_FILE = os.path.join(BASE_DIR, 'default_printer.json')
 
 import json as _json
 
