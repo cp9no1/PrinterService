@@ -210,32 +210,24 @@
     <div class="left-panel">
         <div class="left-content">
             <h1 class="text-center">内网打印服务</h1>
-            
-            <div class="silent-print-info">
-                <strong>🔧 静默打印功能:</strong> 使用Windows底层打印API，完全避免弹出任何程序界面
-            </div>
-            
-            <div class="conversion-info">
-				<strong>转换能力状态:</strong><br>
-				<span class="{% if pymupdf_available %}status-good{% else %}status-missing{% endif %}">
-					PDF处理(PyMuPDF): {{ '✓ 可用' if pymupdf_available else '✗ 未安装 - 静默打印功能不可用' }}
-				</span><br>
-				<span class="{% if office_available %}status-good{% else %}status-missing{% endif %}">
-					Office COM组件: {{ '✓ 可用' if office_available else '✗ 未安装Office' }}
-				</span>
-				<br><small>所有转换都是完全静默的，不会弹出任何界面</small>
-			</div>
-            
+
             <div class="print-settings">
-                <h4>打印设置</h4>
                 <div class="row g-3">
                     <div class="col-12">
                         <label class="form-label">选择打印机</label>
                         <select id="printerSelect" class="form-select">
                             {% for p in printers %}
-                                <option value="{{p}}">{{p}}</option>
+                                <option value="{{ p }}"
+                                    {% if p == default_printer %}selected{% endif %}>{{ p }}</option>
                             {% endfor %}
                         </select>
+                        <div class="form-check mt-2 ms-1">
+                            <input class="form-check-input" type="checkbox" id="setDefaultChk"
+                                {% if default_printer %}checked{% endif %}>
+                            <label class="form-check-label" for="setDefaultChk">
+                                设为默认打印机
+                            </label>
+                        </div>
                     </div>
                     <div class="col-6">
                         <label class="form-label">打印份数</label>
@@ -243,7 +235,9 @@
                     </div>
                     <div class="col-6">
                         <label class="form-label">纸张大小</label>
-                        <input type="text" id="paperSizeInput" value="A4" class="form-control">
+                        <select id="paperSizeInput" class="form-select">
+                            <option value="">加载中...</option>
+                        </select>
                     </div>
                     <div class="col-12">
                         <label class="form-label">单双面</label>
@@ -252,6 +246,38 @@
                             <option value="2">长边翻转双面</option>
                             <option value="3">短边翻转双面</option>
                         </select>
+                        <div id="duplexHint" class="form-text"></div>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">打印页数</label>
+                        <div class="row g-2 align-items-center">
+                            <div class="col-5">
+                                <select id="pageModeSelect" class="form-select">
+                                    <option value="all">全部</option>
+                                    <option value="odd">仅奇数页</option>
+                                    <option value="even">仅偶数页</option>
+                                    <option value="custom">自定义</option>
+                                </select>
+                            </div>
+                            <div class="col-7">
+                                <input type="text" id="pageRangeInput" class="form-control"
+                                    placeholder="如：1-3,5,8-10" disabled
+                                    title="仅在选择「自定义」时启用。支持范围 a-b 和单个页码，逗号分隔，页号从 1 开始。">
+                            </div>
+                        </div>
+                        <div id="pageHint" class="form-text"></div>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">方向</label>
+                        <select id="orientationSelect" class="form-select">
+                            <option value="">跟随原文</option>
+                            <option value="portrait">纵向</option>
+                            <option value="landscape">横向</option>
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">缩放 (%)</label>
+                        <input type="number" id="scaleInput" value="100" min="10" max="200" step="1" class="form-control">
                     </div>
                     <div class="col-12">
                         <button id="printAllBtn" class="btn btn-success w-100">静默打印全部PDF文件</button>
@@ -265,6 +291,23 @@
                     <li class="list-group-item">{{l}}</li>
                 {% endfor %}
             </ul>
+
+            <div class="mt-4"></div>
+
+            <div class="silent-print-info">
+                <strong>🔧 静默打印功能:</strong> 使用Windows底层打印API，完全避免弹出任何程序界面
+            </div>
+
+            <div class="conversion-info">
+				<strong>转换能力状态:</strong><br>
+				<span class="{% if pymupdf_available %}status-good{% else %}status-missing{% endif %}">
+					PDF处理(PyMuPDF): {{ '✓ 可用' if pymupdf_available else '✗ 未安装 - 静默打印功能不可用' }}
+				</span><br>
+				<span class="{% if office_available %}status-good{% else %}status-missing{% endif %}">
+					Office COM组件: {{ '✓ 可用' if office_available else '✗ 未安装Office' }}
+				</span>
+				<br><small>所有转换都是完全静默的，不会弹出任何界面</small>
+			</div>
         </div>
     </div>
 
@@ -297,6 +340,134 @@ document.addEventListener('DOMContentLoaded', function() {
     const fileList = document.getElementById('fileList');
     const printAllBtn = document.getElementById('printAllBtn');
     const logList = document.getElementById('logList');
+    const printerSelect = document.getElementById('printerSelect');
+    const duplexSelect = document.getElementById('duplexSelect');
+    const duplexHint = document.getElementById('duplexHint');
+    const paperSizeSelect = document.getElementById('paperSizeInput');
+    const setDefaultChk = document.getElementById('setDefaultChk');
+
+    // 保存当前服务端记录的默认打印机名（可能为 null），用于复选框状态联动
+    let currentDefault = {{ default_printer | tojson }};
+
+    // 缓存打印机能力 { printerName: { duplex: bool, paper_sizes: [{id, name}, ...] } }
+    let printerCapsCache = {};
+
+    // 根据当前选中打印机刷新纸张下拉
+    // 切换打印机后纸张列表会变，所以每次 change 都要重建 option
+    function refreshPaperSizeOptions() {
+        const printer = printerSelect.value;
+        const caps = printerCapsCache[printer] || {};
+        const paperSizes = Array.isArray(caps.paper_sizes) ? caps.paper_sizes : [];
+        // 清掉旧选项，保留占位元素
+        paperSizeSelect.innerHTML = '';
+        // 默认选项：不指定纸张→让打印机用自己的默认纸张
+        const defaultOpt = document.createElement('option');
+        defaultOpt.value = '';
+        defaultOpt.textContent = '默认';
+        paperSizeSelect.appendChild(defaultOpt);
+        if (paperSizes.length === 0) {
+            // 拿不到列表时给出明确提示选项（value 为空，后端会跳过纸张设置）
+            const warn = document.createElement('option');
+            warn.value = '';
+            warn.textContent = '(无法读取纸张列表)';
+            warn.disabled = true;
+            paperSizeSelect.appendChild(warn);
+        } else {
+            paperSizes.forEach(p => {
+                const opt = document.createElement('option');
+                // value 是 DMPAPER_* id，后端直接拿去填 dmPaperSize
+                opt.value = String(p.id);
+                opt.textContent = p.name;
+                // 默认选中 A4（DMPAPER_A4=9）如果存在
+                if (p.id === 9) {
+                    opt.selected = true;
+                }
+                paperSizeSelect.appendChild(opt);
+            });
+        }
+    }
+
+    // 根据当前选中打印机刷新双面选项可用性
+    function refreshDuplexOptions() {
+        const printer = printerSelect.value;
+        const caps = printerCapsCache[printer] || { duplex: false };
+        // 包裹所有 option 状态：单面总是可用，双面依赖能力
+        Array.from(duplexSelect.options).forEach(opt => {
+            const v = parseInt(opt.value);
+            const supported = (v === 1) || caps.duplex;
+            opt.disabled = !supported;
+            opt.style.color = supported ? '' : '#adb5bd';
+        });
+        // 当前选中的项若被禁用，自动回落到「单面」
+        if (duplexSelect.selectedOptions[0] && duplexSelect.selectedOptions[0].disabled) {
+            duplexSelect.value = '1';
+        }
+        // 提示文案
+        if (!caps.duplex) {
+            duplexHint.textContent = '⚠️ 当前打印机不支持双面打印';
+            duplexHint.style.color = '#dc3545';
+        } else {
+            duplexHint.textContent = '✓ 支持双面打印';
+            duplexHint.style.color = '#198754';
+        }
+    }
+
+    // 拉取本机所有打印机能力
+    function loadPrinterCaps() {
+        fetch('/api/printer_capabilities')
+            .then(r => r.json())
+            .then(caps => {
+                printerCapsCache = caps || {};
+                refreshDuplexOptions();
+                refreshPaperSizeOptions();
+            })
+            .catch(err => {
+                console.warn('获取打印机能力失败:', err);
+                refreshDuplexOptions();
+                refreshPaperSizeOptions();
+            });
+    }
+
+    printerSelect.addEventListener('change', () => {
+        refreshDuplexOptions();
+        refreshPaperSizeOptions();
+        // 如果当前选中的项本是默认打印机，勾上复选框；否则按现有默认状态
+        setDefaultChk.checked = (printerSelect.value === currentDefault);
+    });
+
+    // 「设为默认」复选框：勾选则当前选中打印机设为默认；取消勾选则清除默认
+    setDefaultChk.addEventListener('change', () => {
+        const target = setDefaultChk.checked ? printerSelect.value : '';
+        fetch('/api/default_printer', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ printer: target })
+        })
+        .then(r => r.json())
+        .then(res => {
+            if (res.success) {
+                currentDefault = res.default_printer || null;
+                // 如果勾选但服务器返回的默认不是当前选中的，说明被拒绝/出错
+                setDefaultChk.checked = (currentDefault === printerSelect.value);
+            } else {
+                alert(res.message || '设置失败');
+                setDefaultChk.checked = (currentDefault === printerSelect.value);
+            }
+        })
+        .catch(err => {
+            alert('设置失败: ' + err);
+            setDefaultChk.checked = (currentDefault === printerSelect.value);
+        });
+    });
+    duplexSelect.addEventListener('change', () => {
+        const opt = duplexSelect.selectedOptions[0];
+        if (opt && opt.disabled) {
+            alert('当前打印机不支持此双面模式，已自动切换为单面');
+            duplexSelect.value = '1';
+            refreshDuplexOptions();
+        }
+    });
+    loadPrinterCaps();
     
     dropZone.addEventListener('click', () => fileInput.click());
     
@@ -337,13 +508,69 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(response => response.json())
         .then(data => {
-            updateFileItem(fileItem, data);
-            refreshFileList();
+            if (!data.success) {
+                updateFileItemStatus(fileItem, data.message || '上传失败', 'danger');
+                return;
+            }
+            // 后端返回的 filename 是去重后的 stored_name（可能比用户原始名多 _1 后缀）
+            // 后续轮询/打印/删除都必须用 stored_name 才能匹配磁盘文件
+            const storedName = data.filename;
+            if (data.queued) {
+                // 进入异步队列：立刻显示「排队中...」，然后启动专属轮询直到看到 PDF
+                updateFileItemStatus(fileItem, '排队中...', 'info');
+                pollConversionStatus(fileItem, storedName, file.name);
+            } else {
+                // 同步转换完成（PDF/图片/文本）：直接走通用刷新拿到完整按钮组
+                refreshFileList();
+            }
         })
         .catch(error => {
             console.error('上传失败:', error);
             updateFileItemStatus(fileItem, '上传失败', 'danger');
         });
+    }
+
+    // 针对单个 Office 文件的转换状态轮询。每 1.5 秒拉一次 /api/files，
+    // 找到目标文件的当前状态：排队中 / 转换中 / 已转换 / 转换失败。
+    // 终止条件：状态进入 done（pdf 存在）/ failed / 超过 60 次仍无果（约 90 秒）
+    function pollConversionStatus(fileItem, storedName, displayName) {
+        let attempts = 0;
+        const maxAttempts = 60;
+        // 用属性记录 timer，允许中途 cancel（例如 window unload，这里暂不实现）
+        const timer = setInterval(() => {
+            attempts++;
+            fetch('/api/files')
+                .then(r => r.json())
+                .then(files => {
+                    // 找到我们的文件
+                    const target = files.find(f => f.name === storedName);
+                    if (!target) {
+                        // 文件被删了或消失了，停止轮询
+                        clearInterval(timer);
+                        return;
+                    }
+                    if (target.pdf_path) {
+                        // PDF 已生成，转换完成 → 直接刷新一次让按钮组生效
+                        clearInterval(timer);
+                        refreshFileList();
+                    } else if (target.status === '转换中...') {
+                        updateFileItemStatus(fileItem, '转换中...', 'warning');
+                    } else if (target.status === '转换失败') {
+                        clearInterval(timer);
+                        updateFileItemStatus(fileItem, '转换失败', 'danger');
+                    } else {
+                        // 仍排队中，保持原样
+                        updateFileItemStatus(fileItem, '排队中...', 'info');
+                    }
+                })
+                .catch(err => {
+                    console.warn('轮询转换状态失败:', err);
+                });
+            if (attempts >= maxAttempts) {
+                clearInterval(timer);
+                updateFileItemStatus(fileItem, '转换超时', 'danger');
+            }
+        }, 1500);
     }
     
     function createFileItem(filename, status, statusColor) {
@@ -370,13 +597,24 @@ document.addEventListener('DOMContentLoaded', function() {
         const actionsElement = fileItem.querySelector('.file-actions');
         
         if (data.success) {
-            statusElement.textContent = data.converted ? '已转换为PDF' : '已上传';
-            statusElement.className = `badge bg-${data.converted ? 'success' : 'secondary'}`;
+            // 优先使用后端给的具体状态（包含「排队中...」「转换中...」「转换失败」），
+            // 仅当后端没给状态时才用「已转换为PDF / 已上传」二选一回落，
+            // 这样可以避免把 createFileItem 刚设置的「排队中」改成「已上传」。
+            if (data.status && data.status_color) {
+                statusElement.textContent = data.status;
+                statusElement.className = `badge bg-${data.status_color}`;
+            } else {
+                statusElement.textContent = data.converted ? '已转换为PDF' : '已上传';
+                statusElement.className = `badge bg-${data.converted ? 'success' : 'secondary'}`;
+            }
             
             let buttonsHtml = '';
             if (data.converted && data.pdf_name) {
                 buttonsHtml += `<button class="btn btn-primary btn-sm" onclick="printFile('${data.filename}')">🔇 静默打印</button>`;
                 buttonsHtml += `<a href="/preview/${data.pdf_name}" target="_blank" class="btn btn-outline-secondary btn-sm">预览PDF</a>`;
+            } else if (data.status && data.status !== '转换失败') {
+                // 排队中 / 转换中：不显示「无法静默打印」，避免误导；只保留预览+删除按钮
+                buttonsHtml += `<span class="text-muted small">${data.status}</span>`;
             } else {
                 buttonsHtml += `<span class="text-muted small">无法静默打印，请先转换为PDF</span>`;
             }
@@ -406,9 +644,18 @@ document.addEventListener('DOMContentLoaded', function() {
                     success: true,
                     filename: file.name,
                     converted: file.pdf_path ? true : false,
-                    pdf_name: file.pdf_name
+                    pdf_name: file.pdf_name,
+                    // 把后端的排队/转换中状态透传给 updateFileItem，
+                    // 否则会被它默认回落成「已上传」覆盖掉
+                    status: file.status,
+                    status_color: file.status_color
                 });
                 fileList.appendChild(fileItem);
+                // 如果该文件正处于异步转换中（没 PDF 但有排队/转换中状态），
+                // 启动专属轮询持续刷新——这样刷新页面后仍能正确推进到「已转换为PDF」
+                if (!file.pdf_path && file.status && (file.status === '排队中...' || file.status === '转换中...')) {
+                    pollConversionStatus(fileItem, file.name, file.name);
+                }
             });
         });
     }
@@ -418,6 +665,29 @@ document.addEventListener('DOMContentLoaded', function() {
         const copies = document.getElementById('copiesInput').value;
         const duplex = document.getElementById('duplexSelect').value;
         const paperSize = document.getElementById('paperSizeInput').value;
+        const orientation = document.getElementById('orientationSelect').value || null;
+        const scaleRaw = document.getElementById('scaleInput').value;
+        const scale = (scaleRaw && parseInt(scaleRaw) !== 100) ? parseInt(scaleRaw) : null;
+        const pageMode = document.getElementById('pageModeSelect').value;
+        const pageRange = document.getElementById('pageRangeInput').value.trim();
+
+        // 前端拦截：禁止提交被禁用的双面模式
+        const curOpt = duplexSelect.selectedOptions[0];
+        if (curOpt && curOpt.disabled) {
+            addLogEntry(`✗ 打印失败: ${filename} - 当前打印机不支持选中的双面模式`);
+            return;
+        }
+        // 前端拦截：缩放范围校验
+        if (scale !== null && (scale < 10 || scale > 200)) {
+            addLogEntry(`✗ 打印失败: ${filename} - 缩放必须在 10% ~ 200% 之间`);
+            return;
+        }
+        // 前端拦截：自定义页码范围校验
+        const rangeErr = validatePageRange(pageMode, pageRange);
+        if (rangeErr) {
+            addLogEntry(`✗ 打印失败: ${filename} - ${rangeErr}`);
+            return;
+        }
         
         fetch('/print_single', {
             method: 'POST',
@@ -428,7 +698,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 copies: parseInt(copies),
                 duplex: parseInt(duplex),
                 paper_size: paperSize,
-                quality: 'normal'
+                quality: 'normal',
+                orientation: orientation,
+                scale: scale,
+                page_mode: pageMode,
+                page_range: (pageMode === 'custom') ? pageRange : null
             })
         })
         .then(response => response.json())
@@ -450,6 +724,23 @@ document.addEventListener('DOMContentLoaded', function() {
         const copies = document.getElementById('copiesInput').value;
         const duplex = document.getElementById('duplexSelect').value;
         const paperSize = document.getElementById('paperSizeInput').value;
+        const orientation = document.getElementById('orientationSelect').value || null;
+        const scaleRaw = document.getElementById('scaleInput').value;
+        const scale = (scaleRaw && parseInt(scaleRaw) !== 100) ? parseInt(scaleRaw) : null;
+        const pageMode = document.getElementById('pageModeSelect').value;
+        const pageRange = document.getElementById('pageRangeInput').value.trim();
+
+        // 前端拦截：缩放范围校验
+        if (scale !== null && (scale < 10 || scale > 200)) {
+            addLogEntry('✗ 静默批量打印失败: 缩放必须在 10% ~ 200% 之间');
+            return;
+        }
+        // 前端拦截：自定义页码范围校验
+        const rangeErr = validatePageRange(pageMode, pageRange);
+        if (rangeErr) {
+            addLogEntry(`✗ 静默批量打印失败: ${rangeErr}`);
+            return;
+        }
         
         fetch('/print_all', {
             method: 'POST',
@@ -459,7 +750,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 copies: parseInt(copies),
                 duplex: parseInt(duplex),
                 paper_size: paperSize,
-                quality: 'normal'
+                quality: 'normal',
+                orientation: orientation,
+                scale: scale,
+                page_mode: pageMode,
+                page_range: (pageMode === 'custom') ? pageRange : null
             })
         })
         .then(response => response.json())
@@ -485,6 +780,45 @@ document.addEventListener('DOMContentLoaded', function() {
         if (logList.children.length > 10) {
             logList.removeChild(logList.lastChild);
         }
+    }
+
+    // ===== 打印页数选择 =====
+    const pageModeSelect = document.getElementById('pageModeSelect');
+    const pageRangeInput = document.getElementById('pageRangeInput');
+    const pageHint = document.getElementById('pageHint');
+
+    function updatePageRangeUI() {
+        if (pageModeSelect.value === 'custom') {
+            pageRangeInput.disabled = false;
+            pageRangeInput.focus();
+            pageHint.textContent = '示例：1-3,5,8-10（页号从 1 开始）';
+        } else {
+            pageRangeInput.disabled = true;
+            pageHint.textContent = '';
+        }
+    }
+    pageModeSelect.addEventListener('change', updatePageRangeUI);
+
+    function validatePageRange(mode, range) {
+        // 返回错误描述字符串；合法时返回 null
+        if (mode !== 'custom') return null;
+        if (!range) return '自定义页码不能为空';
+        const parts = range.split(',');
+        for (let part of parts) {
+            part = part.trim();
+            if (!part) continue;
+            if (part.includes('-')) {
+                const segs = part.split('-');
+                if (segs.length !== 2) return `范围格式错误: ${part}`;
+                const lo = parseInt(segs[0], 10);
+                const hi = parseInt(segs[1], 10);
+                if (isNaN(lo) || isNaN(hi) || lo < 1 || hi < 1) return `页码必须为正整数: ${part}`;
+            } else {
+                const p = parseInt(part, 10);
+                if (isNaN(p) || p < 1) return `页码必须为正整数: ${part}`;
+            }
+        }
+        return null;
     }
 	
 	window.showDeleteModal = function(filename) {

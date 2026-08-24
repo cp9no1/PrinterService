@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+uploads/
+pdfs/
+# pyproject / uv
+# uv.lock is kept (lockfiles should be committed)
+
+# Runtime artifacts
+print_log.txt
+pdfs/*
+uploads/*
+!pdfs/.gitkeep
+!uploads/.gitkeep
+
+# Build outputs (the released exe IS committed on purpose; ignore everything else)
+dist/*
+!dist/*.exe
+build/
+*.spec.bak
+default_printer.json
+# OS / editor
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/
