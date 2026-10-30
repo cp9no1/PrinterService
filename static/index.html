@@ -1,575 +1,529 @@
 <!doctype html>
 <html lang="zh-cn">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>内网打印服务</title>
-    <link href="/static/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body { 
-            background: #f8f9fa; 
-            margin: 0;
-            padding: 0;
-            height: 100vh;
-            overflow: hidden;
-        }
-        .main-container { 
-            height: 100vh;
-            display: flex;
-            margin: 0;
-            padding: 0;
-        }
-        
-        .left-panel {
-            width: 45%;
-            background: #fff;
-            border-right: 2px solid #e0e0e0;
-            display: flex;
-            flex-direction: column;
-            overflow-y: auto;
-        }
-        .left-content {
-            padding: 20px;
-            flex: 1;
-        }
-        
-        .right-panel {
-            width: 55%;
-            display: flex;
-            flex-direction: column;
-            background: #fafafa;
-        }
-        
-        h1 { 
-            font-size: 1.8rem; 
-            margin-bottom: 1rem; 
-            color: #333;
-        }
-        .form-label { font-weight: 500; }
-        .log-list { 
-            max-height: 200px; 
-            overflow-y: auto; 
-            font-size: 0.9em; 
-            margin-bottom: 0;
-        }
-        .supported-formats { 
-            font-size: 0.9em; 
-            color: #6c757d; 
-            margin-top: 0.5rem; 
-        }
-        .conversion-info { 
-            background: #e8f5e8; 
-            padding: 12px; 
-            border-radius: 8px; 
-            margin-bottom: 15px; 
-            font-size: 0.85em; 
-        }
-        .status-good { color: #28a745; font-weight: bold; }
-        .status-missing { color: #dc3545; }
-        .silent-print-info { 
-            background: #e3f2fd; 
-            padding: 12px; 
-            border-radius: 8px; 
-            margin-bottom: 15px; 
-            font-size: 0.9em;
-        }
-        
-        .drop-zone {
-            flex: 1;
-            border: 3px dashed #007bff;
-            border-radius: 0;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            text-align: center;
-            background: #f8f9ff;
-            transition: all 0.3s ease;
-            cursor: pointer;
-            margin: 0;
-            min-height: 40%;
-            position: relative;
-        }
-        .drop-zone:hover {
-            border-color: #0056b3;
-            background: #e6f3ff;
-        }
-        .drop-zone.dragover {
-            border-color: #0056b3;
-            background: #cce7ff;
-            color: #0056b3;
-        }
-        .drop-zone i {
-            font-size: 4rem;
-            color: #007bff;
-            margin-bottom: 15px;
-        }
-        .drop-zone h3 {
-            color: #007bff;
-            margin-bottom: 10px;
-        }
-        
-        .file-list-container {
-            flex: 1;
-            background: #fff;
-            border-top: 2px solid #e0e0e0;
-            overflow-y: auto;
-            max-height: 60%;
-        }
-        .file-list-header {
-            background: #f8f9fa;
-            padding: 15px 20px;
-            border-bottom: 1px solid #e0e0e0;
-            font-weight: 600;
-            color: #495057;
-        }
-        .file-list-content {
-            padding: 10px;
-        }
-        
-        .file-item {
-            background: #fff;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 10px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        .file-info {
-            flex-grow: 1;
-        }
-        .file-name {
-            font-weight: 500;
-            margin-bottom: 5px;
-        }
-        .file-status {
-            font-size: 0.9em;
-            color: #6c757d;
-        }
-        .file-actions {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-        .file-actions .btn {
-            font-size: 0.8rem;
-            padding: 0.25rem 0.5rem;
-        }
-        
-        .upload-progress {
-            width: 100%;
-            height: 4px;
-            background: #f0f0f0;
-            border-radius: 2px;
-            overflow: hidden;
-            margin-top: 5px;
-        }
-        .upload-progress-bar {
-            height: 100%;
-            background: #007bff;
-            width: 0%;
-            transition: width 0.3s ease;
-        }
-        
-        .print-settings {
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }
-        .print-settings h4 {
-            margin-bottom: 15px;
-            color: #495057;
-            font-size: 1.1rem;
-        }
-        
-        @media (max-width: 768px) {
-            .main-container {
-                flex-direction: column;
-                height: auto;
-                overflow: visible;
-            }
-            .left-panel, .right-panel {
-                width: 100%;
-            }
-            .right-panel {
-                min-height: 60vh;
-            }
-            body {
-                height: auto;
-                overflow: visible;
-            }
-        }
-    </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2563eb">
+<meta name="format-detection" content="telephone=no">
+<title>内网打印服务</title>
+<link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+<link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-<div class="main-container">
-    <div class="left-panel">
-        <div class="left-content">
-            <h1 class="text-center">内网打印服务</h1>
-            
-            <div class="silent-print-info">
-                <strong>🔧 静默打印功能:</strong> 使用Windows底层打印API，完全避免弹出任何程序界面
+<a class="skip-link" href="#main">跳到主要内容</a>
+
+<div class="app-shell">
+  <!-- ============ 顶栏 ============ -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 9V3h12v6"></path>
+          <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+          <rect x="6" y="14" width="12" height="8" rx="1.5"></rect>
+        </svg>
+      </span>
+      <div class="brand-text">
+        <h1>内网打印服务 <span class="version-chip" id="versionChip">v3.0</span></h1>
+        <p>PrintServer · 手机拍照，直接打印</p>
+      </div>
+    </div>
+    <div class="topbar-meta">
+      <span class="status-chip is-checking" id="serverStatus" title="正在检测服务状态">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="serverStatusText">检测中…</span>
+      </span>
+      <span class="server-chip" id="serverChip" title="服务地址">—</span>
+      <button type="button" class="btn btn-outline btn-sm qr-btn" id="qrBtn" hidden title="手机扫码打开本服务，直接上传打印">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><path d="M14 14h3v3h-3zM20 14v1M20 20h-3M14 20v1"></path></svg>
+        手机访问
+      </button>
+      <span class="admin-badge" id="adminBadge" hidden title="当前通过本机 localhost 访问，可查看全部会话">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.2-2.8 7.7-7 9-4.2-1.3-7-4.8-7-9V6z"></path><path d="M9.5 12l2 2 3.5-4"></path></svg>
+        本机管理员
+      </span>
+    </div>
+  </header>
+
+  <div class="offline-banner" id="offlineBanner" hidden role="alert">
+    <strong>无法连接打印服务</strong>
+    <span>请确认服务已启动，并检查手机是否连接到同一局域网。</span>
+    <button type="button" class="btn btn-sm btn-outline" id="retryHealthBtn">重新检测</button>
+  </div>
+
+  <!-- ============ 步骤条 ============ -->
+  <nav class="stepbar" id="stepbar" aria-label="打印流程">
+    <button class="step is-active" type="button" data-step="1" aria-current="step">
+      <span class="step-num">1</span>
+      <span class="step-text">
+        <span class="step-title">上传文件</span>
+        <span class="step-sub">选择或拍照</span>
+      </span>
+    </button>
+    <span class="step-connector" aria-hidden="true"></span>
+    <button class="step" type="button" data-step="2" aria-current="false">
+      <span class="step-num">2</span>
+      <span class="step-text">
+        <span class="step-title">预览调整</span>
+        <span class="step-sub">缩放 / 布局</span>
+      </span>
+    </button>
+    <span class="step-connector" aria-hidden="true"></span>
+    <button class="step" type="button" data-step="3" aria-current="false">
+      <span class="step-num">3</span>
+      <span class="step-text">
+        <span class="step-title">打印设置</span>
+        <span class="step-sub">选打印机</span>
+      </span>
+    </button>
+  </nav>
+
+  <main class="app-main" id="main">
+    <!-- ================= 第 1 步：上传文件 ================= -->
+    <section class="step-panel is-active" data-step-panel="1" aria-labelledby="step1Title">
+      <div class="panel-head">
+        <h2 id="step1Title"><span class="panel-kicker">第 1 步</span>上传文件</h2>
+        <p class="panel-lead">把要打印的文件拖进来，或用手机直接拍照 / 从相册选择。</p>
+      </div>
+
+      <div class="step-grid step-grid-upload">
+        <div class="card upload-card">
+          <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-label="点击选择文件，或将文件拖拽到这里">
+            <span class="dropzone-art" aria-hidden="true">
+              <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M32 40V14"></path>
+                <path d="M22 24l10-10 10 10"></path>
+                <path d="M14 40v6a6 6 0 0 0 6 6h24a6 6 0 0 0 6-6v-6"></path>
+              </svg>
+            </span>
+            <h3 class="dropzone-title">拖拽文件到这里</h3>
+            <p class="dropzone-sub">或点击下方按钮选择文件</p>
+            <div class="dropzone-actions">
+              <button type="button" class="btn btn-primary btn-lg" id="pickFilesBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+                选择文件
+              </button>
+              <button type="button" class="btn btn-outline btn-lg only-mobile" id="cameraBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8a2 2 0 0 1 2-2h2l1.5-2h7L17 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><circle cx="12" cy="12.5" r="4"></circle></svg>
+                拍照上传
+              </button>
             </div>
-            
-            <div class="conversion-info">
-				<strong>转换能力状态:</strong><br>
-				<span class="{% if pymupdf_available %}status-good{% else %}status-missing{% endif %}">
-					PDF处理(PyMuPDF): {{ '✓ 可用' if pymupdf_available else '✗ 未安装 - 静默打印功能不可用' }}
-				</span><br>
-				<span class="{% if office_available %}status-good{% else %}status-missing{% endif %}">
-					Office COM组件: {{ '✓ 可用' if office_available else '✗ 未安装Office' }}
-				</span>
-				<br><small>所有转换都是完全静默的，不会弹出任何界面</small>
-			</div>
-            
-            <div class="print-settings">
-                <h4>打印设置</h4>
-                <div class="row g-3">
-                    <div class="col-12">
-                        <label class="form-label">选择打印机</label>
-                        <select id="printerSelect" class="form-select">
-                            {% for p in printers %}
-                                <option value="{{p}}">{{p}}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-6">
-                        <label class="form-label">打印份数</label>
-                        <input type="number" id="copiesInput" value="1" min="1" max="10" class="form-control">
-                    </div>
-                    <div class="col-6">
-                        <label class="form-label">纸张大小</label>
-                        <input type="text" id="paperSizeInput" value="A4" class="form-control">
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label">单双面</label>
-                        <select id="duplexSelect" class="form-select">
-                            <option value="1">单面</option>
-                            <option value="2">长边翻转双面</option>
-                            <option value="3">短边翻转双面</option>
-                        </select>
-                    </div>
-                    <div class="col-12">
-                        <button id="printAllBtn" class="btn btn-success w-100">静默打印全部PDF文件</button>
-                    </div>
+            <p class="dropzone-hint only-desktop">电脑上也可以直接按 <kbd>Ctrl</kbd> + <kbd>V</kbd> 粘贴截图或文件</p>
+            <p class="dropzone-limit">单个文件最大 <strong><span id="maxUploadText">{{ max_upload_mb }}</span>MB</strong></p>
+            <div class="format-chips" aria-label="支持的文件格式">
+              <span class="format-chip"><b>PDF</b></span>
+              <span class="format-chip"><b>图片</b> JPG · PNG · BMP · GIF · TIFF</span>
+              <span class="format-chip"><b>文本</b> TXT · MD · LOG</span>
+              <span class="format-chip"><b>Office</b> DOC · DOCX · XLS · XLSX · PPT · PPTX</span>
+            </div>
+          </div>
+          <input type="file" id="fileInput" multiple hidden>
+          <input type="file" id="cameraInput" accept="image/*" capture="environment" hidden>
+
+          <div class="upload-queue" id="uploadQueueWrap" hidden>
+            <div class="upload-queue-head">
+              <h3>本次上传</h3>
+              <span class="pill" id="uploadQueueCount">0</span>
+            </div>
+            <ul class="upload-queue-list" id="uploadQueueList"></ul>
+          </div>
+
+          <div class="env-strip" id="envStrip" aria-label="运行环境状态"></div>
+        </div>
+
+        <div class="card files-card">
+          <div class="card-head">
+            <h3>我的文件 <span class="pill" id="fileCountPill">0</span></h3>
+            <button type="button" class="btn btn-ghost btn-sm" id="refreshFilesBtn">刷新</button>
+          </div>
+          <div class="empty-state" id="filesEmpty">
+            <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M16 10h20l12 12v32H16z"></path>
+              <path d="M36 10v12h12"></path>
+              <path d="M24 34h16M24 42h10"></path>
+            </svg>
+            <p class="empty-title">还没有文件</p>
+            <p class="empty-sub">上传后，文件会显示在这里，刷新页面也不会丢失。</p>
+          </div>
+          <ul class="file-list" id="sessionFileList"></ul>
+          <p class="files-footnote" id="filesFootnote" hidden>仅显示当前浏览器会话上传的文件 · 其他设备看不到你的文件</p>
+
+          <details class="admin-card" id="adminCard" hidden>
+            <summary>
+              <span class="admin-summary-title">本机管理员 · 所有会话文件</span>
+              <span class="pill" id="adminSessionCount">0</span>
+            </summary>
+            <div class="admin-body">
+              <p class="admin-tip">当前通过本机 localhost 访问，可查看所有浏览器会话上传的文件。</p>
+              <div id="adminSessionsWrap"></div>
+              <button type="button" class="btn btn-danger btn-sm" id="adminCleanBtn">清理全部会话文件</button>
+            </div>
+          </details>
+        </div>
+      </div>
+
+      <div class="step-actions">
+        <span class="step-hint" id="step1NextHint">请先上传文件，才能继续预览。</span>
+        <button type="button" class="btn btn-primary btn-lg" id="step1NextBtn" disabled>
+          下一步：预览调整
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+        </button>
+      </div>
+    </section>
+
+    <!-- ================= 第 2 步：预览调整 ================= -->
+    <section class="step-panel" data-step-panel="2" aria-labelledby="step2Title">
+      <div class="panel-head">
+        <h2 id="step2Title"><span class="panel-kicker">第 2 步</span>预览调整</h2>
+        <p class="panel-lead">检查页面效果：可缩放、旋转；图片可选铺满整页，避免打印太小。</p>
+      </div>
+
+      <div class="preview-switcher" id="previewSwitcher" hidden>
+        <div class="switcher-scroll" id="previewSwitcherList" role="tablist" aria-label="切换文件"></div>
+      </div>
+
+      <div class="step-grid step-grid-preview">
+        <div class="card preview-card">
+          <div class="preview-head">
+            <div class="preview-title-wrap">
+              <h3 id="previewTitle">—</h3>
+              <span class="preview-meta" id="previewMeta"></span>
+            </div>
+            <span class="wysiwyg-note" id="wysiwygNote">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+              当前预览 = 实际打印效果
+            </span>
+          </div>
+
+          <div class="viewer" id="viewer">
+            <div class="viewer-stage" id="viewerStage" aria-label="页面预览，可拖动和缩放">
+              <div class="paper" id="paper">
+                <img class="page-img" id="pageImg" alt="页面预览" draggable="false" hidden>
+                <div class="page-state" id="pageState">
+                  <span class="spinner" aria-hidden="true"></span>
+                  <p id="pageStateText">正在生成预览…</p>
+                  <button type="button" class="btn btn-outline btn-sm" id="openOriginalBtn" hidden>在新窗口打开原文件</button>
                 </div>
+              </div>
+            </div>
+            <div class="viewer-toolbar" role="toolbar" aria-label="缩放工具">
+              <button type="button" class="viewer-btn" id="zoomOutBtn" aria-label="缩小" title="缩小">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"></path></svg>
+              </button>
+              <span class="zoom-pct" id="zoomPct" aria-live="polite">100%</span>
+              <button type="button" class="viewer-btn" id="zoomInBtn" aria-label="放大" title="放大">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+              </button>
+              <span class="toolbar-divider" aria-hidden="true"></span>
+              <button type="button" class="viewer-btn viewer-btn-text" id="fitBtn" title="让整页适应窗口">适应窗口</button>
+              <button type="button" class="viewer-btn viewer-btn-text" id="actualBtn" title="按 100% 实际尺寸显示">100%</button>
+            </div>
+            <p class="viewer-hint" id="viewerHint">双指捏合 / 滚轮缩放 · 拖动查看 · 双击放大</p>
+          </div>
+
+          <div class="pager" id="pager" hidden>
+            <button type="button" class="btn btn-outline btn-sm" id="prevPageBtn">‹ 上一页</button>
+            <div class="pager-center">
+              <input type="number" id="pageInput" class="page-input" min="1" value="1" inputmode="numeric" aria-label="当前页码">
+              <span class="pager-total">/ <b id="pageCountText">1</b> 页</span>
+            </div>
+            <button type="button" class="btn btn-outline btn-sm" id="nextPageBtn">下一页 ›</button>
+          </div>
+        </div>
+
+        <aside class="preview-side">
+          <div class="card layout-card" id="imageLayoutCard" hidden>
+            <div class="card-head">
+              <h3>图片布局 <span class="card-sub">避免打印太小</span></h3>
+              <button type="button" class="btn btn-ghost btn-sm" id="resetLayoutBtn">恢复默认</button>
             </div>
 
-            <h4>打印日志</h4>
-            <ul class="list-group log-list" id="logList">
-                {% for l in logs %}
-                    <li class="list-group-item">{{l}}</li>
-                {% endfor %}
+            <div class="field">
+              <span class="field-label">图片如何放置</span>
+              <div class="segmented segmented-3" id="fitGroup" role="group" aria-label="图片放置方式">
+                <button type="button" data-fit="fit" class="is-active">适应页面</button>
+                <button type="button" data-fit="fill">铺满页面<span class="reco-badge">推荐</span></button>
+                <button type="button" data-fit="actual">原始大小</button>
+              </div>
+              <p class="field-help" id="fitHint">适应页面：完整显示整张图片，四周留白；手机照片想打更大，可选「铺满页面」。</p>
+            </div>
+
+            <div class="field">
+              <span class="field-label">旋转</span>
+              <div class="segmented segmented-4" id="rotateGroup" role="group" aria-label="旋转角度">
+                <button type="button" data-rotate="0">0°</button>
+                <button type="button" data-rotate="90">90°</button>
+                <button type="button" data-rotate="180">180°</button>
+                <button type="button" data-rotate="270">270°</button>
+              </div>
+            </div>
+
+            <div class="field">
+              <span class="field-label">页边距 <output class="field-value" id="marginValue">5 mm</output></span>
+              <input type="range" id="marginRange" min="0" max="20" step="1" value="5" aria-label="页边距（毫米）">
+              <div class="range-scale" aria-hidden="true"><span>0</span><span>10</span><span>20mm</span></div>
+            </div>
+
+            <div class="field-row">
+              <div class="field">
+                <label class="field-label" for="imagePaper">纸张</label>
+                <select id="imagePaper" class="select">
+                  <option value="A4">A4</option>
+                  <option value="A5">A5</option>
+                  <option value="Letter">Letter</option>
+                  <option value="4R">4R</option>
+                  <option value="5R">5R</option>
+                </select>
+              </div>
+              <div class="field">
+                <span class="field-label">页面方向</span>
+                <div class="segmented segmented-2" id="imageOrient" role="group" aria-label="页面方向">
+                  <button type="button" data-orient="portrait">纵向</button>
+                  <button type="button" data-orient="landscape">横向</button>
+                </div>
+              </div>
+            </div>
+
+            <p class="layout-note">默认布局：适应页面 + 5mm 边距 + A4 纵向。修改后会自动刷新，上面的预览就是打印出来的样子。</p>
+          </div>
+
+          <div class="card info-card">
+            <div class="card-head"><h3>文件信息</h3></div>
+            <dl class="info-list" id="previewInfo"></dl>
+            <p class="info-tip">纸张和方向可在第 3 步继续调整；图片文件以本步设置为准。</p>
+          </div>
+        </aside>
+      </div>
+
+      <div class="step-actions">
+        <button type="button" class="btn btn-outline btn-lg" id="step2PrevBtn">上一步：上传文件</button>
+        <button type="button" class="btn btn-primary btn-lg" id="step2NextBtn">
+          下一步：打印设置
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+        </button>
+      </div>
+    </section>
+
+    <!-- ================= 第 3 步：打印设置 ================= -->
+    <section class="step-panel" data-step-panel="3" aria-labelledby="step3Title">
+      <div class="panel-head">
+        <h2 id="step3Title"><span class="panel-kicker">第 3 步</span>打印设置</h2>
+        <p class="panel-lead">选择打印机和参数，然后开始打印。</p>
+      </div>
+
+      <div class="step-grid step-grid-print">
+        <div class="print-main">
+          <div class="card settings-card">
+            <div class="card-head">
+              <h3>打印参数</h3>
+              <span class="pill" id="settingsFilePill">—</span>
+            </div>
+
+            <div class="field">
+              <label class="field-label" for="printerSelect">打印机</label>
+              <div class="printer-row">
+                <select id="printerSelect" class="select"></select>
+                <button type="button" class="btn btn-outline" id="refreshPrintersBtn" title="刷新打印机列表">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"></path><path d="M20 4v7h-7"></path></svg>
+                  刷新
+                </button>
+              </div>
+              <p class="field-help" id="printerHelp">正在读取打印机列表…</p>
+            </div>
+
+            <div class="field-grid">
+              <div class="field">
+                <label class="field-label" for="copiesInput">份数</label>
+                <div class="stepper">
+                  <button type="button" class="stepper-btn" id="copiesMinus" aria-label="减少份数">−</button>
+                  <input type="number" id="copiesInput" class="stepper-input" min="1" max="10" value="1" inputmode="numeric" aria-label="打印份数">
+                  <button type="button" class="stepper-btn" id="copiesPlus" aria-label="增加份数">＋</button>
+                </div>
+              </div>
+              <div class="field">
+                <label class="field-label" for="paperSelect">纸张</label>
+                <select id="paperSelect" class="select">
+                  <option value="A4">A4</option>
+                  <option value="A5">A5</option>
+                  <option value="Letter">Letter</option>
+                  <option value="4R">4R</option>
+                  <option value="5R">5R</option>
+                </select>
+              </div>
+              <div class="field field-wide">
+                <span class="field-label">单双面</span>
+                <div class="segmented segmented-3" id="duplexGroup" role="group" aria-label="单双面">
+                  <button type="button" data-duplex="1">单面</button>
+                  <button type="button" data-duplex="2">长边翻转</button>
+                  <button type="button" data-duplex="3">短边翻转</button>
+                </div>
+              </div>
+              <div class="field field-wide" id="orientationRow">
+                <span class="field-label">打印方向</span>
+                <div class="segmented segmented-4" id="orientationGroup" role="group" aria-label="打印方向">
+                  <button type="button" data-orient="portrait">纵向</button>
+                  <button type="button" data-orient="landscape">横向</button>
+                  <button type="button" data-orient="reverse_landscape">反向横向</button>
+                  <button type="button" data-orient="reverse_portrait">反向纵向</button>
+                </div>
+              </div>
+              <div class="field field-wide">
+                <span class="field-label">打印质量</span>
+                <div class="segmented segmented-2" id="qualityGroup" role="group" aria-label="打印质量">
+                  <button type="button" data-quality="normal">普通</button>
+                  <button type="button" data-quality="high">高质量</button>
+                </div>
+              </div>
+            </div>
+            <p class="field-help" id="imageOrientationHint" hidden>图片的纸张和方向在「第 2 步 · 图片布局」中设置，已自动同步。</p>
+          </div>
+
+          <div class="card range-card">
+            <div class="card-head">
+              <h3>页码范围</h3>
+              <span class="pill pill-soft" id="rangeFileLabel">当前文件</span>
+            </div>
+            <p class="field-help">页码范围只应用于当前文件「<span id="rangeFileName">—</span>」；其他文件默认打印全部页。</p>
+            <div class="range-quick" id="rangeQuick" role="group" aria-label="页码范围快捷选择">
+              <button type="button" data-range="all" class="is-active">全部</button>
+              <button type="button" data-range="odd">奇数页</button>
+              <button type="button" data-range="even">偶数页</button>
+              <button type="button" data-range="custom">自定义</button>
+            </div>
+            <div class="range-input-row">
+              <input type="text" id="pageRangeInput" class="text-input" value="all" placeholder="例如：1-5, 7, 10-12" aria-label="自定义页码范围" disabled>
+              <button type="button" class="btn btn-outline" id="applyRangeBtn" disabled>应用</button>
+            </div>
+            <p class="field-help" id="rangeHint">共 <b id="rangePageCount">1</b> 页，页码范围支持 <code>1-5, 7</code> 写法。</p>
+            <div class="page-grid" id="pageGrid" aria-label="页码选择"></div>
+            <p class="field-help" id="pageGridHint" hidden>页数较多时，请直接在上方输入页码范围。</p>
+          </div>
+
+          <div class="card excel-card" id="excelCard" hidden>
+            <div class="card-head">
+              <h3>Excel 打印设置</h3>
+              <span class="pill pill-soft" id="excelFileLabel">—</span>
+            </div>
+            <div class="field-row">
+              <div class="field">
+                <label class="field-label" for="sheetSelect">工作表</label>
+                <select id="sheetSelect" class="select"></select>
+              </div>
+              <div class="field">
+                <label class="field-label" for="printAreaInput">打印区域（可选）</label>
+                <div class="range-input-row">
+                  <input type="text" id="printAreaInput" class="text-input" placeholder="例如：A1:F20">
+                  <button type="button" class="btn btn-outline" id="openGridBtn">可视选区域</button>
+                </div>
+              </div>
+            </div>
+            <p class="field-help">选择工作表后，会按该工作表重新转换并打印；打印区域留空则打印整张表。</p>
+          </div>
+
+          <div class="card print-files-card">
+            <div class="card-head">
+              <h3>待打印文件 <span class="pill" id="printFileCountPill">0</span></h3>
+              <span class="card-actions">
+                <button type="button" class="btn btn-ghost btn-sm" id="selectAllBtn">全选</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="selectNoneBtn">全不选</button>
+              </span>
+            </div>
+            <p class="field-help">点击文件名可切换下方「页码范围 / Excel」设置对象；勾选决定本次打印哪些文件。</p>
+            <ul class="print-file-list" id="printFileList"></ul>
+          </div>
+
+          <div class="card start-card">
+            <button type="button" class="btn btn-primary btn-xl" id="startPrintBtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6"></path><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8" rx="1.5"></rect></svg>
+              <span id="startPrintBtnText">开始打印</span>
+            </button>
+            <p class="start-hint" id="printSummary">将打印 0 个文件</p>
+          </div>
+
+          <div class="card result-card" id="resultCard" hidden>
+            <div class="card-head">
+              <h3>打印结果</h3>
+              <span class="pill" id="resultPill">—</span>
+            </div>
+            <ul class="result-list" id="resultList"></ul>
+            <div class="result-actions">
+              <button type="button" class="btn btn-outline btn-sm" id="retryFailedBtn" hidden>重试失败项</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="dismissResultBtn">关闭</button>
+            </div>
+          </div>
+        </div>
+
+        <aside class="print-side">
+          <div class="card logs-card">
+            <div class="card-head">
+              <h3>本会话打印记录</h3>
+              <button type="button" class="btn btn-ghost btn-sm" id="refreshLogsBtn">刷新</button>
+            </div>
+            <ul class="log-list" id="logsList"></ul>
+            <div class="empty-state empty-compact" id="logsEmpty">
+              <p class="empty-title">还没有打印记录</p>
+              <p class="empty-sub">打印完成后，这里会显示最近 20 条记录。</p>
+            </div>
+          </div>
+
+          <div class="card side-tips-card">
+            <h3>小提示</h3>
+            <ul class="tips-list">
+              <li>想打印得更大：手机照片可在「第 2 步」选择「铺满页面」。</li>
+              <li>打印前可在第 2 步双指放大，检查细节有没有被裁切。</li>
+              <li>文件只属于当前浏览器会话，换设备看不到。</li>
             </ul>
-        </div>
-    </div>
+          </div>
 
-    <div class="right-panel">
-        <div class="drop-zone" id="dropZone">
-            <input type="file" id="fileInput" multiple style="display: none;">
-            <i>📄</i>
-            <h3>拖拽文件到这里上传</h3>
-            <p style="margin-bottom: 10px;">或者点击选择文件</p>
-            <div class="supported-formats">
-                支持格式：PDF、图片(JPG/PNG/BMP/GIF/TIFF)、文本(TXT/MD/LOG)、Office文档(DOC/DOCX/XLS/XLSX/PPT/PPTX)
-            </div>
-        </div>
-        
-        <div class="file-list-container">
-            <div class="file-list-header">
-                文件列表
-            </div>
-            <div class="file-list-content" id="fileList">
-            </div>
-        </div>
-    </div>
+          <div class="card danger-card">
+            <h3>清理</h3>
+            <p>清空当前会话上传的所有文件（含转换后的 PDF），操作不可恢复。</p>
+            <button type="button" class="btn btn-danger" id="clearMyFilesBtn">清空我的文件</button>
+          </div>
+        </aside>
+      </div>
+
+      <div class="step-actions">
+        <button type="button" class="btn btn-outline btn-lg" id="step3PrevBtn">上一步：预览调整</button>
+        <button type="button" class="btn btn-ghost btn-lg" id="newOrderBtn">＋ 再打一份（回到上传）</button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <span id="footerText">内网打印服务 · 数据只保存在运行服务的电脑上</span>
+    <span class="footer-dot" aria-hidden="true">·</span>
+    <span>手机与电脑需在同一局域网</span>
+  </footer>
 </div>
 
-<script src="/static/bootstrap.bundle.min.js"></script>
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    const dropZone = document.getElementById('dropZone');
-    const fileInput = document.getElementById('fileInput');
-    const fileList = document.getElementById('fileList');
-    const printAllBtn = document.getElementById('printAllBtn');
-    const logList = document.getElementById('logList');
-    
-    dropZone.addEventListener('click', () => fileInput.click());
-    
-    fileInput.addEventListener('change', handleFiles);
-    
-    dropZone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        dropZone.classList.add('dragover');
-    });
-    
-    dropZone.addEventListener('dragleave', (e) => {
-        e.preventDefault();
-        dropZone.classList.remove('dragover');
-    });
-    
-    dropZone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dropZone.classList.remove('dragover');
-        const files = e.dataTransfer.files;
-        handleFiles({target: {files: files}});
-    });
-    
-    function handleFiles(event) {
-        const files = Array.from(event.target.files);
-        files.forEach(uploadFile);
-    }
-    
-    function uploadFile(file) {
-        const formData = new FormData();
-        formData.append('file', file);
-        
-        const fileItem = createFileItem(file.name, '上传中...', 'warning');
-        fileList.appendChild(fileItem);
-        
-        fetch('/upload', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            updateFileItem(fileItem, data);
-            refreshFileList();
-        })
-        .catch(error => {
-            console.error('上传失败:', error);
-            updateFileItemStatus(fileItem, '上传失败', 'danger');
-        });
-    }
-    
-    function createFileItem(filename, status, statusColor) {
-        const div = document.createElement('div');
-        div.className = 'file-item';
-        div.innerHTML = `
-            <div class="file-info">
-                <div class="file-name">${filename}</div>
-                <div class="file-status">
-                    <span class="badge bg-${statusColor}">${status}</span>
-                </div>
-                <div class="upload-progress" style="display: none;">
-                    <div class="upload-progress-bar"></div>
-                </div>
-            </div>
-            <div class="file-actions">
-            </div>
-        `;
-        return div;
-    }
-    
-    function updateFileItem(fileItem, data) {
-        const statusElement = fileItem.querySelector('.file-status .badge');
-        const actionsElement = fileItem.querySelector('.file-actions');
-        
-        if (data.success) {
-            statusElement.textContent = data.converted ? '已转换为PDF' : '已上传';
-            statusElement.className = `badge bg-${data.converted ? 'success' : 'secondary'}`;
-            
-            let buttonsHtml = '';
-            if (data.converted && data.pdf_name) {
-                buttonsHtml += `<button class="btn btn-primary btn-sm" onclick="printFile('${data.filename}')">🔇 静默打印</button>`;
-                buttonsHtml += `<a href="/preview/${data.pdf_name}" target="_blank" class="btn btn-outline-secondary btn-sm">预览PDF</a>`;
-            } else {
-                buttonsHtml += `<span class="text-muted small">无法静默打印，请先转换为PDF</span>`;
-            }
-            buttonsHtml += `<a href="/preview/${data.filename}" target="_blank" class="btn btn-outline-info btn-sm">预览原文件</a>`;
-			buttonsHtml += `<button class="btn btn-danger btn-sm" onclick="showDeleteModal('${data.filename}')">🗑️ 删除</button>`;
-            actionsElement.innerHTML = buttonsHtml;
-        } else {
-            statusElement.textContent = data.message || '处理失败';
-            statusElement.className = 'badge bg-danger';
-        }
-    }
-    
-    function updateFileItemStatus(fileItem, status, statusColor) {
-        const statusElement = fileItem.querySelector('.file-status .badge');
-        statusElement.textContent = status;
-        statusElement.className = `badge bg-${statusColor}`;
-    }
-    
-    function refreshFileList() {
-        fetch('/api/files')
-        .then(response => response.json())
-        .then(files => {
-            fileList.innerHTML = '';
-            files.forEach(file => {
-                const fileItem = createFileItem(file.name, file.status, file.status_color);
-                updateFileItem(fileItem, {
-                    success: true,
-                    filename: file.name,
-                    converted: file.pdf_path ? true : false,
-                    pdf_name: file.pdf_name
-                });
-                fileList.appendChild(fileItem);
-            });
-        });
-    }
-    
-    window.printFile = function(filename) {
-        const printer = document.getElementById('printerSelect').value;
-        const copies = document.getElementById('copiesInput').value;
-        const duplex = document.getElementById('duplexSelect').value;
-        const paperSize = document.getElementById('paperSizeInput').value;
-        
-        fetch('/print_single', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                filename: filename,
-                printer: printer,
-                copies: parseInt(copies),
-                duplex: parseInt(duplex),
-                paper_size: paperSize,
-                quality: 'normal'
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                addLogEntry(`✓ 静默打印成功: ${filename}`);
-            } else {
-                addLogEntry(`✗ 静默打印失败: ${filename} - ${data.message}`);
-            }
-        })
-        .catch(error => {
-            console.error('静默打印失败:', error);
-            addLogEntry(`✗ 静默打印失败: ${filename} - 网络错误`);
-        });
-    }
-    
-    printAllBtn.addEventListener('click', function() {
-        const printer = document.getElementById('printerSelect').value;
-        const copies = document.getElementById('copiesInput').value;
-        const duplex = document.getElementById('duplexSelect').value;
-        const paperSize = document.getElementById('paperSizeInput').value;
-        
-        fetch('/print_all', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                printer: printer,
-                copies: parseInt(copies),
-                duplex: parseInt(duplex),
-                paper_size: paperSize,
-                quality: 'normal'
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                addLogEntry(`✓ 静默批量打印完成，共打印 ${data.printed_count} 个文件`);
-            } else {
-                addLogEntry(`✗ 静默批量打印失败: ${data.message}`);
-            }
-        })
-        .catch(error => {
-            console.error('静默批量打印失败:', error);
-            addLogEntry('✗ 静默批量打印失败: 网络错误');
-        });
-    });
-    
-    function addLogEntry(message) {
-        const li = document.createElement('li');
-        li.className = 'list-group-item';
-        li.textContent = new Date().toLocaleString() + ' ' + message;
-        logList.insertBefore(li, logList.firstChild);
-        
-        if (logList.children.length > 10) {
-            logList.removeChild(logList.lastChild);
-        }
-    }
-	
-	window.showDeleteModal = function(filename) {
-		fetch('/api/files')
-		.then(response => response.json())
-		.then(files => {
-			const fileInfo = files.find(f => f.name === filename);
-			if (fileInfo) {
-				document.getElementById('deleteFileName').textContent = filename;
-				document.getElementById('deleteFileSize').textContent = formatFileSize(fileInfo.size);
-				document.getElementById('deleteFileTime').textContent = fileInfo.created_time;
-				
-				const confirmBtn = document.getElementById('confirmDeleteBtn');
-				confirmBtn.onclick = () => confirmDelete(filename);
-				
-				const modal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
-				modal.show();
-			}
-		})
-		.catch(error => {
-			console.error('获取文件信息失败:', error);
-			alert('获取文件信息失败');
-		});
-	}
-
-	function confirmDelete(filename) {
-		fetch('/delete_file', {
-			method: 'POST',
-			headers: {'Content-Type': 'application/json'},
-			body: JSON.stringify({filename: filename})
-		})
-		.then(response => response.json())
-		.then(data => {
-			const modal = bootstrap.Modal.getInstance(document.getElementById('deleteConfirmModal'));
-			modal.hide();
-			
-			if (data.success) {
-				refreshFileList();
-			} else {
-				addLogEntry(`❌ 删除失败: ${filename} - ${data.message}`);
-				alert(`删除失败: ${data.message}`);
-			}
-		})
-		.catch(error => {
-			alert('删除失败: 网络错误');
-			const modal = bootstrap.Modal.getInstance(document.getElementById('deleteConfirmModal'));
-			modal.hide();
-		});
-	}
-
-	function formatFileSize(bytes) {
-		if (bytes === 0) return '0 B';
-		const k = 1024;
-		const sizes = ['B', 'KB', 'MB', 'GB'];
-		const i = Math.floor(Math.log(bytes) / Math.log(k));
-		return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-	}
-    refreshFileList();
-});
-</script>
-<div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteConfirmModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="deleteConfirmModalLabel">确认删除文件</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <div class="alert alert-warning">
-                    <strong>警告：</strong> 删除操作不可恢复！
-                </div>
-                <p>您确定要删除以下文件吗？</p>
-                <div id="deleteFileInfo">
-                    <p><strong>文件名：</strong> <span id="deleteFileName"></span></p>
-                    <p><strong>文件大小：</strong> <span id="deleteFileSize"></span></p>
-                    <p><strong>创建时间：</strong> <span id="deleteFileTime"></span></p>
-                </div>
-                <p class="text-muted small">注意：将同时删除源文件和对应的PDF文件</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">确认删除</button>
-            </div>
-        </div>
+<!-- ============ 通用弹窗 ============ -->
+<div class="modal-backdrop" id="modalBackdrop" hidden>
+  <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-head">
+      <h2 id="modalTitle">提示</h2>
+      <button type="button" class="modal-close" id="modalCloseBtn" aria-label="关闭">×</button>
     </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-foot" id="modalFoot"></div>
+  </div>
 </div>
+
+<!-- ============ 打印进度遮罩 ============ -->
+<div class="print-overlay" id="printOverlay" hidden>
+  <div class="print-overlay-card" role="status" aria-live="assertive">
+    <div class="print-overlay-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"></path><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8" rx="1.5"></rect></svg>
+    </div>
+    <h2 id="printOverlayTitle">正在提交打印…</h2>
+    <div class="progress progress-lg"><div class="progress-bar" id="printProgressBar" style="width:0%"></div></div>
+    <p class="print-overlay-detail" id="printOverlayDetail">请保持此页面打开</p>
+  </div>
+</div>
+
+<div class="toast-root" id="toastRoot" aria-live="polite" aria-atomic="false"></div>
+
+<script>window.PRINTSERVER_BOOT = {{ boot | tojson }};</script>
+<script src="/static/app.js"></script>
 </body>
 </html>
